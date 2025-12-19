@@ -20,33 +20,28 @@ export default function TeacherSchedule() {
   const [rangeEnd, setRangeEnd] = useState("13:00")
   
   // Carga de datos
-  const [existingBookings, setExistingBookings] = useState<any[]>([])
+  const [existingSlots, setExistingSlots] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  // 1. CARGAR RESERVAS
+  // 1. CARGAR DISPONIBILIDAD
   useEffect(() => {
-      fetchMonthBookings()
+      fetchAvailability()
   }, [currentDate])
 
-  const fetchMonthBookings = async () => {
+  const fetchAvailability = async () => {
       setLoading(true)
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return router.push('/login')
 
-      const year = currentDate.getFullYear()
-      const month = currentDate.getMonth()
-      const firstDay = new Date(year, month, 1).toISOString()
-      const lastDay = new Date(year, month + 1, 0).toISOString()
-
+      // Cargar TODOS los slots del maestro
+      // (Podríamos filtrar por mes, pero para simplificar cargamos todo el calendario futuro)
       const { data } = await supabase
-          .from('bookings')
+          .from('availability')
           .select('*')
           .eq('teacher_id', user.id)
-          .gte('date', firstDay)
-          .lte('date', lastDay)
       
-      if (data) setExistingBookings(data)
+      if (data) setExistingSlots(data)
       setLoading(false)
   }
 
@@ -61,8 +56,10 @@ export default function TeacherSchedule() {
       const clickedDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
       setSelectedDate(clickedDate)
       
+      // Filtrar slots de este día específico
+      // Nota: Guardamos "day_of_week" como la fecha completa YYYY-MM-DD para simplificar la recurrencia manual por ahora
       const dateStr = clickedDate.toISOString().split('T')[0]
-      const slots = existingBookings.filter(b => b.date === dateStr).sort((a,b) => a.time.localeCompare(b.time))
+      const slots = existingSlots.filter(s => s.day_of_week === dateStr).sort((a,b) => a.start_time.localeCompare(b.start_time))
       setSelectedSlots(slots)
   }
 
@@ -84,7 +81,8 @@ export default function TeacherSchedule() {
         const { data: { user } } = await supabase.auth.getUser()
         if(!user) throw new Error("No hay usuario")
 
-        // Formato seguro de fecha local YYYY-MM-DD
+        // Usaremos el campo 'day_of_week' para guardar la FECHA EXACTA (YYYY-MM-DD)
+        // Esto permite que el estudiante busque por fecha específica
         const year = selectedDate.getFullYear()
         const month = String(selectedDate.getMonth() + 1).padStart(2, '0')
         const day = String(selectedDate.getDate()).padStart(2, '0')
@@ -94,33 +92,33 @@ export default function TeacherSchedule() {
 
         // Generar bloques de 1 hora
         for (let h = startHour; h < endHour; h++) {
-            const timeStr = `${h.toString().padStart(2, '0')}:00:00`
+            const timeStrStart = `${h.toString().padStart(2, '0')}:00:00`
+            const timeStrEnd = `${(h+1).toString().padStart(2, '0')}:00:00`
             
-            // Verificar si ya existe para no duplicar
-            const exists = selectedSlots.some(s => s.time.startsWith(timeStr.slice(0,5)))
+            // Verificar si ya existe
+            const exists = selectedSlots.some(s => s.start_time.startsWith(timeStrStart.slice(0,5)))
             
             if (!exists) {
                 newSlots.push({
                     teacher_id: user.id,
-                    date: dateStr,
-                    time: timeStr,
-                    status: 'pending',
-                    meeting_link: `room-${user.id}-${Date.now()}-${h}`,
-                    topic: 'Disponible',
-                    student_id: null
+                    day_of_week: dateStr, // Guardamos la fecha
+                    start_time: timeStrStart,
+                    end_time: timeStrEnd,
+                    is_recurring: false // Por ahora son slots únicos por fecha
                 })
             }
         }
 
         if (newSlots.length > 0) {
-            const { data, error } = await supabase.from('bookings').insert(newSlots).select()
+            // INSERTAR EN TABLA AVAILABILITY (NO BOOKINGS)
+            const { data, error } = await supabase.from('availability').insert(newSlots).select()
             
             if (error) throw error
 
             if (data) {
-                const updatedGlobal = [...existingBookings, ...data]
-                setExistingBookings(updatedGlobal)
-                setSelectedSlots([...selectedSlots, ...data].sort((a,b) => a.time.localeCompare(b.time)))
+                const updatedGlobal = [...existingSlots, ...data]
+                setExistingSlots(updatedGlobal)
+                setSelectedSlots([...selectedSlots, ...data].sort((a,b) => a.start_time.localeCompare(b.start_time)))
             }
         } else {
             alert("Esas horas ya están agregadas.")
@@ -136,13 +134,14 @@ export default function TeacherSchedule() {
   const deleteSlot = async (id: string) => {
       if(!confirm("¿Eliminar este horario?")) return
       setSaving(true)
-      const { error } = await supabase.from('bookings').delete().eq('id', id)
+      // BORRAR DE AVAILABILITY
+      const { error } = await supabase.from('availability').delete().eq('id', id)
       
       if (error) {
            alert("Error al eliminar: " + error.message)
       } else {
-           setExistingBookings(existingBookings.filter(b => b.id !== id))
-           setSelectedSlots(selectedSlots.filter(b => b.id !== id))
+           setExistingSlots(existingSlots.filter(s => s.id !== id))
+           setSelectedSlots(selectedSlots.filter(s => s.id !== id))
       }
       setSaving(false)
   }
@@ -157,7 +156,8 @@ export default function TeacherSchedule() {
 
       for (let day = 1; day <= daysInMonth; day++) {
           const dateStr = new Date(currentDate.getFullYear(), currentDate.getMonth(), day).toISOString().split('T')[0]
-          const daySlots = existingBookings.filter(b => b.date === dateStr)
+          // Filtrar slots de este día
+          const daySlots = existingSlots.filter(s => s.day_of_week === dateStr)
           const isSelected = selectedDate?.getDate() === day && selectedDate?.getMonth() === currentDate.getMonth()
           
           days.push(
@@ -165,7 +165,9 @@ export default function TeacherSchedule() {
                   <span className={`text-sm font-bold w-6 h-6 flex items-center justify-center rounded-full ${isSelected ? 'bg-indigo-600 text-white' : 'text-slate-700'}`}>{day}</span>
                   <div className="mt-2 space-y-1 overflow-hidden h-12">
                       {daySlots.slice(0, 3).map(slot => (
-                          <div key={slot.id} className={`text-[10px] px-1 rounded truncate ${slot.student_id ? 'bg-green-100 text-green-700 font-bold' : 'bg-slate-100 text-slate-500'}`}>{slot.time.slice(0,5)}</div>
+                          <div key={slot.id} className="text-[10px] px-1 rounded truncate bg-indigo-100 text-indigo-600 font-bold">
+                             {slot.start_time.slice(0,5)}
+                          </div>
                       ))}
                       {daySlots.length > 3 && <div className="text-[10px] text-slate-400">+{daySlots.length - 3}</div>}
                   </div>
@@ -182,7 +184,6 @@ export default function TeacherSchedule() {
       
       {/* 1. CALENDARIO */}
       <div className="flex-1 p-6 md:p-8 overflow-y-auto">
-          {/* HEADER CON BOTÓN ATRÁS CORREGIDO */}
           <div className="flex items-center gap-4 mb-6">
             <Link 
                 href="/dashboard/teacher" 
@@ -190,7 +191,7 @@ export default function TeacherSchedule() {
             >
                 <ArrowLeft className="w-5 h-5" />
             </Link>
-            <h1 className="text-2xl font-bold">Mi Agenda</h1>
+            <h1 className="text-2xl font-bold">Mi Disponibilidad</h1>
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -228,20 +229,19 @@ export default function TeacherSchedule() {
                           <select value={rangeEnd} onChange={e=>setRangeEnd(e.target.value)} className="bg-white border p-2 rounded w-full font-bold text-sm">{hoursOptions.map(h=><option key={h} value={h}>{h}</option>)}</select>
                       </div>
                       <button onClick={addTimeRange} disabled={saving} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg shadow-md hover:bg-indigo-700 disabled:opacity-50 flex justify-center items-center gap-2">
-                          {saving ? <Loader2 className="w-4 h-4 animate-spin"/> : <Plus className="w-4 h-4"/>} Generar y Guardar
+                          {saving ? <Loader2 className="w-4 h-4 animate-spin"/> : <Plus className="w-4 h-4"/>} Guardar Disponibilidad
                       </button>
                   </div>
 
                   {/* LISTA DE SLOTS */}
                   <div className="flex-1 overflow-y-auto space-y-2">
                       {selectedSlots.map((slot) => (
-                          <div key={slot.id} className={`p-3 rounded-lg border flex justify-between items-center ${slot.student_id ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-100'}`}>
-                              <span className="font-bold text-slate-700">{slot.time.slice(0,5)}</span>
-                              {slot.student_id ? <span className="text-xs font-bold text-indigo-600">RESERVADO</span> : 
-                                <button onClick={() => deleteSlot(slot.id)} className="text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4"/></button>
-                              }
+                          <div key={slot.id} className="p-3 rounded-lg border flex justify-between items-center bg-white border-slate-100 hover:border-indigo-200">
+                              <span className="font-bold text-slate-700">{slot.start_time.slice(0,5)} - {slot.end_time.slice(0,5)}</span>
+                              <button onClick={() => deleteSlot(slot.id)} className="text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4"/></button>
                           </div>
                       ))}
+                      {selectedSlots.length === 0 && <p className="text-center text-xs text-slate-400 mt-4">No hay horas para este día.</p>}
                   </div>
               </>
           )}
