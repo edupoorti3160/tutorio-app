@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
-import { BookOpen, Video, CreditCard, LogOut, User, Loader2, Play, Search, MessageSquare, Bell, X, Zap, CheckCircle } from 'lucide-react'
+import { BookOpen, Video, CreditCard, LogOut, User, Loader2, Play, Search, MessageSquare, Bell, X, Zap, Calendar } from 'lucide-react'
 import Link from 'next/link'
 
 export default function StudentDashboard() {
@@ -263,6 +263,13 @@ export default function StudentDashboard() {
           <Link href="/dashboard/student" className="w-full flex items-center gap-3 px-4 py-3 bg-indigo-50 text-indigo-700 rounded-xl font-medium text-left">
             <BookOpen className="w-5 h-5" /> My Classes
           </Link>
+          
+          {/* --- BOTÓN NUEVO AGREGADO --- */}
+          <Link href="/dashboard/student/schedule" className="w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-indigo-600 rounded-xl font-medium text-left transition-colors">
+            <Calendar className="w-5 h-5" /> My Schedule
+          </Link>
+          {/* --------------------------- */}
+
           <Link href="/dashboard/student/find-tutors" className="w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-indigo-600 rounded-xl font-medium text-left transition-colors">
             <Search className="w-5 h-5" /> Find Tutors
           </Link>
