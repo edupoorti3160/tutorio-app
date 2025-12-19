@@ -94,10 +94,11 @@ export default function TeacherDashboard() {
         if (myResources) setResources(myResources)
 
         // 5. Canal Realtime (SOLICITUDES DE LLAMADA)
+        // CAMBIO: Filtramos por status=waiting para que llegue a TODOS los profes (Uber logic)
         const channel = supabase.channel('room-requests')
           .on(
             'postgres_changes', 
-            { event: 'INSERT', schema: 'public', table: 'class_requests', filter: `teacher_id=eq.${user.id}` }, 
+            { event: 'INSERT', schema: 'public', table: 'class_requests', filter: 'status=eq.waiting' }, 
             (payload: any) => {
                 // Solo reaccionar si está en espera
                 if(payload.new.status === 'waiting') {
@@ -125,13 +126,16 @@ export default function TeacherDashboard() {
 
   // --- CORRECCIÓN 1: ACEPTAR LLAMADA (HANDSHAKE) ---
   const handleAcceptCall = async () => {
-      if(!incomingRequest) return
+      if(!incomingRequest || !user) return
       
       try {
-          // Actualizamos el estado a 'accepted' para que el alumno reciba la notificación
+          // CAMBIO: Nos asignamos la llamada (teacher_id) y cambiamos status
           await supabase
             .from('class_requests')
-            .update({ status: 'accepted' })
+            .update({ 
+                status: 'accepted',
+                teacher_id: user.id // <-- NOS ASIGNAMOS LA CLASE
+            })
             .eq('id', incomingRequest.id)
 
           // Redirigimos a la sala
@@ -374,8 +378,8 @@ export default function TeacherDashboard() {
                     </div>
                 </Link>
 
-                {/* BOTÓN: TIENDA PREMIUM */}
-                <Link href="/dashboard/teacher/premium" className="block bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow group">
+                {/* BOTÓN: TIENDA PREMIUM (CAMBIADO A /premiun) */}
+                <Link href="/dashboard/teacher/premiun" className="block bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow group">
                     <div className="flex items-center gap-4">
                         <div className="bg-amber-100 text-amber-600 p-3 rounded-xl group-hover:bg-amber-600 group-hover:text-white transition-colors">
                             <ShoppingBag className="w-6 h-6"/>
@@ -404,7 +408,7 @@ export default function TeacherDashboard() {
         </div>
       </div>
 
-      {/* MODAL DE RECURSOS */}
+      {/* MODALES DE RECURSOS Y PAGOS (Sin cambios) */}
       {showResourceModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
               <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full h-[600px] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -458,7 +462,6 @@ export default function TeacherDashboard() {
           </div>
       )}
 
-      {/* MODAL DE PAGOS */}
       {showPayoutModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
               <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">

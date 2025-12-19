@@ -149,7 +149,7 @@ export default function StudentDashboard() {
                         setCalling(false)
                         
                         // Opcional: Sonido de notificación
-                        const audio = new Audio('/notification.mp3') // Asegúrate de tener un mp3 o quita esta línea
+                        const audio = new Audio('/notification.mp3') 
                         audio.play().catch(() => {}) 
                     }
                 }
@@ -198,7 +198,7 @@ export default function StudentDashboard() {
     if (nextClass && nextClass.meeting_link) {
         router.push(`/room/${nextClass.meeting_link}`)
     } else {
-        router.push('/room/demo-class')
+        router.push('/room/demo-class?lang=en') // Agregado ?lang=en por si acaso
     }
   }
 
@@ -260,15 +260,14 @@ export default function StudentDashboard() {
         </div>
         
         <nav className="flex-1 p-4 space-y-2">
-          <Link href="/dashboard/student" className="w-full flex items-center gap-3 px-4 py-3 bg-indigo-50 text-indigo-700 rounded-xl font-medium text-left">
+          {/* CORREGIDO: Apunta a /schedule para que no sea un link muerto */}
+          <Link href="/dashboard/student/schedule" className="w-full flex items-center gap-3 px-4 py-3 bg-indigo-50 text-indigo-700 rounded-xl font-medium text-left">
             <BookOpen className="w-5 h-5" /> My Classes
           </Link>
           
-          {/* --- BOTÓN NUEVO AGREGADO --- */}
           <Link href="/dashboard/student/schedule" className="w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-indigo-600 rounded-xl font-medium text-left transition-colors">
             <Calendar className="w-5 h-5" /> My Schedule
           </Link>
-          {/* --------------------------- */}
 
           <Link href="/dashboard/student/find-tutors" className="w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-indigo-600 rounded-xl font-medium text-left transition-colors">
             <Search className="w-5 h-5" /> Find Tutors
@@ -358,7 +357,7 @@ export default function StudentDashboard() {
 
       </main>
 
-      {/* --- NOTIFICATIONS MODAL (ACTUALIZADO) --- */}
+      {/* --- NOTIFICATIONS MODAL --- */}
       {isNotificationsOpen && (
           <div className="fixed inset-0 z-50 flex justify-end">
               <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setIsNotificationsOpen(false)}></div>
@@ -383,7 +382,6 @@ export default function StudentDashboard() {
                                   </div>
                                   <p className="text-xs text-slate-600 mb-3 leading-relaxed">{notif.message}</p>
                                   
-                                  {/* BOTÓN DE ACCIÓN DINÁMICO */}
                                   {notif.actionLabel && notif.actionLink && (
                                       <button 
                                         onClick={() => router.push(`/room/${notif.actionLink}`)}

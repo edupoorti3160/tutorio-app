@@ -1,428 +1,472 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { 
-  Lock, Loader2, Clock, X, Zap, Brain, FileText, Printer, Copy, MessageSquareText, ShieldCheck, Wallet, CheckCircle2, Wand2, Save, Download
+  UploadCloud, Video, Users, Calendar, 
+  Loader2, Camera, Edit2, Save, X, DollarSign, BookOpen, User, LogOut, Wallet, ChevronRight, FileText, Trash2, MessageSquare, Clock, ShoppingBag
 } from 'lucide-react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
-// --- 1. AQUÍ DEFINIMOS EL PROMPT MAESTRO (CONSTANTE) ---
-const ARCHITECT_PROMPT = `
-# ROL Y OBJETIVO
-Actúas como el "Arquitecto Pedagógico" de Tutorio. Tu misión es generar una Guía Docente exhaustiva y densa para una clase de Español (ELE) de 60-90 minutos.
-
-IMPORTANTE: El profesor necesita material de sobra. La brevedad es un error. Tu salida debe ser extensa, rigurosa y masiva en ejemplos.
-
-# VARIABLES DE CONFIGURACIÓN
-* **ÁREA:** {INSERTAR_AREA_AQUI}
-* **TEMA ESPECÍFICO:** {INSERTAR_TEMA_AQUI}
-* **NIVEL OBJETIVO:** {INSERTAR_NIVEL_AQUI}
-
-# ESTRUCTURA OBLIGATORIA DE RESPUESTA
-
-## MÓDULO 1: FICHA TÉCNICA
-* **Tema:** {INSERTAR_TEMA_AQUI}
-* **Nivel:** {INSERTAR_NIVEL_AQUI}
-* **Cronograma Sugerido:** Propuesta de tiempos para cubrir los 60 min.
-* **Objetivos:** 3 metas medibles y ambiciosas.
-
-## MÓDULO 2: EXPLICACIÓN TEÓRICA PROFUNDA
-* Desarrollo académico detallado (mínimo 500 palabras).
-* **Tablas:** Obligatorias y extensas.
-* **Excepciones:** Lista detallada.
-* **Matices Regionales:** Diferencias España vs. Latinoamérica.
-
-## MÓDULO 3: BANCO MASIVO DE EJEMPLOS (25 ORACIONES)
-* Genera **25 ejemplos** en total, divididos en 5 sub-categorías.
-* Cada ejemplo incluye nota explicativa.
-* Adaptados al nivel {INSERTAR_NIVEL_AQUI}.
-
-## MÓDULO 4: DINÁMICAS DE CLASE (GUION)
-* **Rompehielos (10 min):** Dinámica compleja.
-* **Role-Play Extenso (20 min):** Guion largo Personaje A y B.
-
-## MÓDULO 5: MATERIAL DE PRÁCTICA INTENSIVA
-* **Ejercicio A (Mecánico):** 20 frases.
-* **Ejercicio B (Analítico):** 10 situaciones.
-* **Solucionario:** Al final.
-
-## MÓDULO 6: LECTURA CULTURAL Y DEBATE
-* **Texto:** 400-500 palabras denso y rico.
-* **Comprensión:** 5 preguntas.
-* **Debate:** 3 preguntas polémicas.
-
-# INSTRUCCIONES DE CALIDAD
-1. Prioriza cantidad y calidad.
-2. Formato Markdown impecable.
-3. Tono Experto.
-
-GENERA LA GUÍA EXTENSA AHORA.
-`
-
-export default function EliteBoutiquePage() {
-  const supabase = createClient()
-  const [loading, setLoading] = useState(true)
-  const [products, setProducts] = useState<any[]>([])
-  const [userProfile, setUserProfile] = useState<any>(null)
-  const [purchasedIds, setPurchasedIds] = useState<string[]>([])
-  const [selectedProduct, setSelectedProduct] = useState<any>(null)
-  const [walletBalance, setWalletBalance] = useState(0)
+export default function TeacherDashboard() {
+  const [supabase] = useState(() => createClient())
+  const router = useRouter()
   
-  // --- 2. NUEVOS ESTADOS PARA LA CONFIGURACIÓN ---
-  const [config, setConfig] = useState({
-    area: 'Gramática',
-    topic: '',
-    level: 'B1'
+  // Estados Generales
+  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<any>(null)
+  
+  // Estados del Dashboard
+  const [todaySchedule, setTodaySchedule] = useState<any[]>([])
+  const [incomingRequest, setIncomingRequest] = useState<any>(null)
+  const [stats, setStats] = useState({ classes: 0, earnings: 0 })
+
+  // Estados Perfil
+  const [isEditingProfile, setIsEditingProfile] = useState(false)
+  const [savingProfile, setSavingProfile] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [profileData, setProfileData] = useState({
+    first_name: '', last_name: '', headline: '', biography: '',
+    hourly_rate: 15, specialty: 'spanish', avatar_url: ''
   })
 
-  // IA States
-  const [generating, setGenerating] = useState(false)
-  const [generatedLesson, setGeneratedLesson] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false) // <--- NUEVO ESTADO AGREGADO
+  // Estados Pagos
+  const [showPayoutModal, setShowPayoutModal] = useState(false)
+  const [payoutLoading, setPayoutLoading] = useState(false)
+  const [payoutMethod, setPayoutMethod] = useState<'paypal' | 'crypto'>('paypal')
+  const [payoutAddress, setPayoutAddress] = useState('')
 
+  // Estados Recursos
+  const [showResourceModal, setShowResourceModal] = useState(false)
+  const [resources, setResources] = useState<any[]>([])
+  const [uploadingResource, setUploadingResource] = useState(false)
+  const resourceInputRef = useRef<HTMLInputElement>(null)
+
+  // LOGOUT
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.refresh()
+    router.push('/')
+  }
+
+  // CARGAR DATOS
   useEffect(() => {
-    fetchEliteData()
-  }, [])
+    const initDashboard = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) { router.push('/login'); return }
+        setUser(user)
 
-  // Cuando se selecciona un producto, pre-llenamos el formulario con sus datos
-  useEffect(() => {
-    if (selectedProduct) {
-      setConfig({
-        area: selectedProduct.category || 'Gramática',
-        topic: selectedProduct.title || '',
-        level: selectedProduct.difficulty_level || 'B1'
-      })
+        // 1. Perfil
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+        if (profile) {
+          setProfileData({
+            first_name: profile.first_name || '', last_name: profile.last_name || '',
+            headline: profile.headline || '', biography: profile.biography || '',
+            hourly_rate: profile.hourly_rate || 15, specialty: profile.specialty || 'spanish',
+            avatar_url: profile.avatar_url || ''
+          })
+        }
+
+        // 2. Agenda Hoy
+        const today = new Date().toISOString().split('T')[0]
+        const { data: bookings, count } = await supabase.from('bookings')
+          .select(`id, date, time, status, topic, meeting_link, student:profiles!student_id(first_name, last_name)`, { count: 'exact' })
+          .eq('teacher_id', user.id).gte('date', today).order('time', { ascending: true })
+
+        // 3. Ganancias
+        let totalEarnings = 0;
+        const { data: completed } = await supabase.from('bookings').select('price_paid').eq('teacher_id', user.id).eq('status', 'completed')
+        if (completed) totalEarnings = completed.reduce((sum, b) => sum + (b.price_paid || 0), 0)
+
+        if (bookings) {
+          const formatted = bookings.map((b: any) => ({
+             id: b.id, time: b.time, student: b.student ? `${b.student.first_name} ${b.student.last_name}` : 'Disponible',
+             type: b.topic || 'Clase', status: b.status, date: b.date, link: b.meeting_link || 'demo-room'
+          })).filter((b: any) => b.date === today)
+          setTodaySchedule(formatted)
+          setStats({ classes: count || 0, earnings: totalEarnings })
+        }
+
+        // 4. Recursos del Maestro
+        const { data: myResources } = await supabase.from('resources').select('*').eq('teacher_id', user.id).order('created_at', { ascending: false })
+        if (myResources) setResources(myResources)
+
+        // 5. Canal Realtime (SOLICITUDES DE LLAMADA - CORREGIDO)
+        const channel = supabase.channel('room-requests')
+          .on(
+            'postgres_changes', 
+            // CORRECCIÓN: Escuchar 'status=waiting'
+            { event: 'INSERT', schema: 'public', table: 'class_requests', filter: 'status=eq.waiting' }, 
+            (payload: any) => {
+                if(payload.new.status === 'waiting') {
+                    setIncomingRequest({ 
+                        id: payload.new.id, 
+                        student: payload.new.student_name, 
+                        roomId: payload.new.room_id 
+                    })
+                    try {
+                        const audio = new Audio('/notification.mp3') 
+                        audio.play().catch(e => console.log("Audio play failed interaction required"))
+                    } catch(e) {}
+                }
+            }
+          )
+          .subscribe()
+
+        return () => { supabase.removeChannel(channel) }
+
+      } catch (error) { console.error(error) } finally { setLoading(false) }
     }
-  }, [selectedProduct])
+    initDashboard()
+  }, [supabase, router])
 
-  const fetchEliteData = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      const [productsRes, purchasesRes] = await Promise.all([
-        supabase.from('platform_resources').select('*').order('created_at', { ascending: false }),
-        supabase.from('resource_purchases').select('resource_id').eq('teacher_id', user.id)
-      ])
-
-      setProducts(productsRes.data || [])
-      setPurchasedIds(purchasesRes.data?.map((p: any) => p.resource_id) || [])
-
-      const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (profileData) setUserProfile(profileData)
-
-      const { data: walletData } = await supabase.from('wallets').select('balance').eq('user_id', user.id)
+  // --- HANDSHAKE LLAMADA ---
+  const handleAcceptCall = async () => {
+      if(!incomingRequest) return
       
-      if (walletData && walletData.length > 0) {
-        setWalletBalance(walletData[0].balance)
-      } else {
-        setWalletBalance(0)
+      try {
+          const { error } = await supabase
+            .from('class_requests')
+            .update({ 
+                status: 'accepted',
+                teacher_id: user.id 
+            })
+            .eq('id', incomingRequest.id)
+
+          if(error) throw error
+          router.push(`/room/${incomingRequest.roomId}`)
+      } catch (error) {
+          console.error("Error aceptando llamada", error)
+          router.push(`/room/${incomingRequest.roomId}`)
       }
-
-    } catch (e) { console.error(e) } finally { setLoading(false) }
   }
 
-  // --- NUEVA FUNCIÓN: GUARDAR EN LA NUBE ---
-  const handleSaveToLibrary = async () => {
-    if (!generatedLesson || !userProfile) return
-    setSaving(true)
-
+  // --- FUNCIONES PERFIL ---
+  const handleUpdateProfile = async () => {
+    setSavingProfile(true)
     try {
-      // Insertamos en la tabla 'learning_resources'
-      const { error } = await supabase.from('learning_resources').insert({
-        teacher_id: userProfile.id,
-        title: `Clase IA: ${config.topic} (${config.level})`, 
-        content_text: generatedLesson, 
-        resource_type: 'grammar', 
-        duration: '60 min',
-        file_format: 'IA-DOC'
-      })
+      await supabase.from('profiles').update({ ...profileData, hourly_rate: Number(profileData.hourly_rate) }).eq('id', user.id)
+      setIsEditingProfile(false)
+    } catch (e) { alert('Error al guardar') } finally { setSavingProfile(false) }
+  }
 
-      if (error) throw error
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.[0]) return
+    const file = e.target.files[0]
+    const filePath = `${user.id}-${Math.random()}.${file.name.split('.').pop()}`
+    setSavingProfile(true)
+    try {
+      await supabase.storage.from('avatars').upload(filePath, file)
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath)
+      setProfileData(prev => ({ ...prev, avatar_url: publicUrl }))
+      await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id)
+    } catch (e:any) { alert(e.message) } finally { setSavingProfile(false) }
+  }
 
-      alert("✅ ¡Clase guardada exitosamente en tu Biblioteca!")
+  // --- FUNCIONES PAGOS ---
+  const handleRequestPayout = async () => {
+    if(!payoutAddress) return alert("Ingresa una cuenta")
+    setPayoutLoading(true)
+    try {
+      await supabase.from('payout_requests').insert({ teacher_id: user.id, amount: stats.earnings, method: payoutMethod, payment_address: payoutAddress })
+      alert('Solicitud enviada'); setShowPayoutModal(false)
+    } catch (e:any) { alert(e.message) } finally { setPayoutLoading(false) }
+  }
+
+  // --- FUNCIONES RECURSOS ---
+  const handleResourceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!e.target.files?.[0]) return
+      const file = e.target.files[0]
+      const fileType = file.type.startsWith('image/') ? 'image' : 'pdf'
+      const fileName = `${Date.now()}-${file.name}`
       
-    } catch (error: any) {
-      alert("Error al guardar: " + error.message)
-    } finally {
-      setSaving(false)
-    }
-  }
+      setUploadingResource(true)
+      try {
+          const { error: uploadError } = await supabase.storage.from('class-resources').upload(fileName, file)
+          if(uploadError) throw uploadError
 
-  const handleSubscribe = async () => {
-    const PRECIO = 19.99
-    if (walletBalance < PRECIO) return alert(`Saldo insuficiente. Tienes $${walletBalance.toFixed(2)}`)
-    setLoading(true)
-    try {
-      const { error } = await supabase.from('profiles').update({ 
-        is_premium_member: true, 
-        premium_until: new Date(Date.now() + 30*24*60*60*1000).toISOString() 
-      }).eq('id', userProfile.id)
-      if (error) throw error
+          const { data: { publicUrl } } = supabase.storage.from('class-resources').getPublicUrl(fileName)
 
-      await supabase.from('wallets').update({ balance: walletBalance - PRECIO }).eq('user_id', userProfile.id)
-      setWalletBalance(prev => prev - PRECIO)
-      setUserProfile({ ...userProfile, is_premium_member: true })
-      alert("¡Bienvenido al Nivel Élite!")
-    } catch (e: any) { alert("Error: " + e.message) } finally { setLoading(false) }
-  }
+          const { data: newResource, error: dbError } = await supabase.from('resources').insert({
+              teacher_id: user.id,
+              title: file.name,
+              file_url: publicUrl,
+              file_type: fileType
+          }).select().single()
 
-  const handlePurchase = async (product: any) => {
-    if (walletBalance < product.price) return alert(`Saldo insuficiente. Tienes $${walletBalance.toFixed(2)}`)
-    setLoading(true)
-    try {
-      const { error } = await supabase.from('resource_purchases').insert({
-        teacher_id: userProfile.id,
-        resource_id: product.id,
-        price_paid: product.price
-      })
-      if (error) throw error
-      await supabase.from('wallets').update({ balance: walletBalance - product.price }).eq('user_id', userProfile.id)
-      setPurchasedIds([...purchasedIds, product.id])
-      setWalletBalance(prev => prev - product.price)
-      alert("Recurso desbloqueado")
-    } catch (e: any) { alert("Error: " + e.message) } finally { setLoading(false) }
-  }
+          if(dbError) throw dbError
 
-  // --- 3. LÓGICA DE IA ACTUALIZADA (CON INYECCIÓN DE VARIABLES) ---
-  const handleGenerateLesson = async () => {
-    if (!selectedProduct) return
-    setGenerating(true)
-    setGeneratedLesson(null)
+          setResources([newResource, ...resources])
 
-    const API_KEY = "AIzaSyC8A8c5ceMoIonb1xw4NoS6M756xvuISVI" // ⚠️ Cuidado: Expuesta en cliente
-    const MODEL_NAME = "gemini-flash-lite-latest"
-
-    // AQUÍ HACEMOS LA MAGIA: REEMPLAZAR LAS VARIABLES
-    const finalPrompt = ARCHITECT_PROMPT
-      .replace(/{INSERTAR_AREA_AQUI}/g, config.area)
-      .replace(/{INSERTAR_TEMA_AQUI}/g, config.topic)
-      .replace(/{INSERTAR_NIVEL_AQUI}/g, config.level)
-
-    try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: finalPrompt }] }] })
-      })
-      
-      const data = await response.json()
-      
-      if (data.error) {
-         console.error("Error de Google:", data.error)
-         throw new Error(`Error del Modelo: ${data.error.message}`)
+      } catch (error: any) {
+          alert("Error subiendo recurso: " + error.message)
+      } finally {
+          setUploadingResource(false)
       }
-      
-      if (data.candidates && data.candidates[0]) {
-        setGeneratedLesson(data.candidates[0].content.parts[0].text)
-      } else {
-        throw new Error("La IA no devolvió contenido.")
-      }
-      
-    } catch (error: any) { 
-      alert(error.message) 
-    } finally { 
-      setGenerating(false) 
-    }
   }
 
-  const isAdmin = userProfile?.role === 'admin'
-  const isPremium = userProfile?.is_premium_member && new Date(userProfile.premium_until) > new Date()
-  const categories = Array.from(new Set(products.map(p => p.category || 'General')))
+  const handleDeleteResource = async (id: string, url: string) => {
+      if(!confirm("¿Borrar este archivo?")) return
+      try {
+          await supabase.from('resources').delete().eq('id', id)
+          setResources(resources.filter(r => r.id !== id))
+      } catch (e) { alert("Error eliminando") }
+  }
 
-  if (loading && !products.length) return <div className="min-h-screen flex items-center justify-center bg-white"><Loader2 className="animate-spin text-indigo-600 w-12 h-12"/></div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="w-8 h-8 animate-spin text-indigo-600"/></div>
 
   return (
-    <div className="min-h-screen bg-[#FDFDFF] font-sans pb-24 text-slate-900">
-      <div className="bg-slate-900 text-white pt-16 pb-24 px-8 md:px-20 relative overflow-hidden mb-12">
-        <div className="relative z-10 max-w-6xl flex flex-col md:flex-row justify-between items-start md:items-end gap-8">
-          <div className="max-w-3xl">
-            <div className="flex items-center gap-2 text-indigo-400 font-bold mb-4">
-              <Brain size={20}/> <span className="text-xs uppercase tracking-widest text-white">Tecnología Tutorio</span>
-            </div>
-            <h1 className="text-4xl md:text-5xl font-black mb-6 leading-tight">Material Docente de Élite</h1>
-            <div className="flex flex-wrap gap-4">
-              {isAdmin ? (
-                <div className="inline-flex items-center gap-2 bg-indigo-500/20 border border-indigo-400 px-4 py-2 rounded-xl text-indigo-300 font-bold text-sm">
-                  <ShieldCheck size={18}/> MODO ADMINISTRADOR
-                </div>
-              ) : isPremium ? (
-                <div className="inline-flex items-center gap-2 bg-green-500/20 border border-green-500/50 px-4 py-2 rounded-xl text-green-300 font-bold text-sm">
-                  <CheckCircle2 size={18}/> MIEMBRO ÉLITE ACTIVO
-                </div>
-              ) : (
-                <button onClick={handleSubscribe} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-xl font-black flex items-center gap-2 shadow-lg transition-all active:scale-95 text-sm">
-                  <Zap fill="currentColor" size={18}/> ACTIVAR PASE ($19.99)
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="bg-white/10 backdrop-blur-md border border-white/10 p-6 rounded-2xl min-w-[200px]">
-             <div className="flex items-center gap-2 text-slate-400 mb-2">
-                <Wallet size={16}/>
-                <p className="text-[10px] font-black uppercase tracking-widest">TUS GANANCIAS</p>
-             </div>
-             <p className="text-4xl font-black text-white tracking-tight">${walletBalance.toFixed(2)}</p>
-          </div>
+    <div className="p-4 md:p-8 font-sans text-slate-900 bg-slate-50 min-h-screen relative">
+      
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Hola, {profileData.first_name}</h1>
+          <p className="text-slate-500 mt-1">Gestiona tus clases y tu perfil profesional desde aquí.</p>
+        </div>
+        <div className="flex items-center gap-4">
+           <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2 rounded-full border border-red-200 text-red-600 font-bold text-sm hover:bg-red-50 transition-colors">
+             <LogOut className="w-4 h-4" /> Cerrar Sesión
+           </button>
+           <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-full shadow-sm border border-slate-200">
+             <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+             <p className="text-xs text-green-700 font-bold uppercase">Perfil Visible</p>
+           </div>
         </div>
       </div>
 
-      <div className="px-6 md:px-20 space-y-20">
-        {categories.map(category => (
-          <section key={category}>
-            <h2 className="text-3xl font-black text-slate-900 mb-8 border-b border-slate-100 pb-4">{category}</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-              {products.filter(p => p.category === category).map(product => {
-                const hasAccess = isAdmin || isPremium || purchasedIds.includes(product.id)
-                return (
-                  <div key={product.id} onClick={() => {setSelectedProduct(product); setGeneratedLesson(null)}} className="bg-white rounded-[2rem] p-5 border border-slate-100 hover:shadow-2xl transition-all cursor-pointer group hover:-translate-y-1">
-                    <div className="aspect-[4/3] rounded-[1.5rem] bg-indigo-50 mb-4 overflow-hidden relative shadow-inner">
-                      {/* --- IMAGEN ORIGINAL PRESERVADA --- */}
-                      <img src={`https://picsum.photos/seed/${product.id}/800/600`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="" />
-                    </div>
-                    <h3 className="text-lg font-black text-slate-900 mb-2 line-clamp-2">{product.title}</h3>
-                    <div className="flex items-center justify-between mt-4">
-                      <span className="text-slate-400 font-bold text-[10px] uppercase flex items-center gap-1"><Clock size={12}/> 60 MIN</span>
-                      <span className={`font-black text-xs py-1 px-3 rounded-full ${hasAccess ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500'}`}>
-                        {hasAccess ? (isAdmin ? 'ADMIN' : 'ABIERTO') : `$${product.price}`}
-                      </span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-        ))}
-      </div>
-
-      {selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-md p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-6xl rounded-[3rem] overflow-hidden flex flex-col md:flex-row h-[90vh]">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* COLUMNA PRINCIPAL */}
+        <div className="lg:col-span-2 space-y-8">
             
-            {/* --- SIDEBAR DEL MODAL --- */}
-            <div className="md:w-1/3 p-10 bg-slate-50 flex flex-col border-r border-slate-100 overflow-y-auto">
-              <button onClick={() => setSelectedProduct(null)} className="self-start mb-8 font-black text-xs uppercase text-slate-400 flex items-center gap-2 hover:text-red-500 transition-colors"><X size={14}/> Cerrar</button>
-              
-              <h2 className="text-2xl font-black text-slate-900 mb-1">Configura tu Clase</h2>
-              <p className="text-xs text-slate-400 mb-6">La IA generará material para 60 minutos.</p>
-
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mb-6 space-y-4">
-                
-                {/* 1. INPUT ÁREA */}
-                <div>
-                  <label className="text-[10px] font-black text-indigo-600 uppercase mb-2 block">1. Área de Estudio</label>
-                  <select 
-                    value={config.area} 
-                    onChange={(e) => setConfig({...config, area: e.target.value})}
-                    className="w-full p-3 bg-slate-50 border-none rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-100"
-                  >
-                    <option value="Gramática">Gramática</option>
-                    <option value="Vocabulario">Vocabulario</option>
-                    <option value="Conversación">Conversación</option>
-                    <option value="Cultura">Cultura</option>
-                    <option value="Fonética">Fonética</option>
-                  </select>
-                </div>
-
-                {/* 2. INPUT TEMA */}
-                <div>
-                  <label className="text-[10px] font-black text-indigo-600 uppercase mb-2 block">2. Tema Específico</label>
-                  <input 
-                    type="text" 
-                    value={config.topic} 
-                    onChange={(e) => setConfig({...config, topic: e.target.value})}
-                    placeholder="Ej: Pretérito vs Imperfecto" 
-                    className="w-full p-3 bg-slate-50 border-none rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-100"
-                  />
-                </div>
-
-                {/* 3. INPUT NIVEL */}
-                <div>
-                  <label className="text-[10px] font-black text-indigo-600 uppercase mb-2 block">3. Nivel Objetivo</label>
-                  <select 
-                    value={config.level} 
-                    onChange={(e) => setConfig({...config, level: e.target.value})}
-                    className="w-full p-3 bg-slate-50 border-none rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-100"
-                  >
-                    <option value="A1">A1 - Acceso</option>
-                    <option value="A2">A2 - Plataforma</option>
-                    <option value="B1">B1 - Umbral</option>
-                    <option value="B2">B2 - Avanzado</option>
-                    <option value="C1">C1 - Dominio</option>
-                    <option value="C2">C2 - Maestría</option>
-                  </select>
-                </div>
-
-              </div>
-
-              <div className="mt-auto">
-                {(isAdmin || isPremium || purchasedIds.includes(selectedProduct.id)) ? (
-                  <button onClick={handleGenerateLesson} disabled={generating} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-3 shadow-xl hover:bg-indigo-700 disabled:bg-slate-300 transition-all">
-                    {generating ? <Loader2 className="animate-spin"/> : <Wand2 size={18}/>} 
-                    {generating ? 'CONSTRUYENDO GUÍA...' : 'GENERAR CLASE MAESTRA'}
-                  </button>
-                ) : (
-                  <button onClick={() => handlePurchase(selectedProduct)} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-3 hover:bg-black transition-all">
-                    <Lock size={18}/> DESBLOQUEAR (${selectedProduct.price})
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* --- VISOR DE RESULTADOS --- */}
-            <div className="md:w-2/3 p-12 bg-white overflow-y-auto">
-              {!generatedLesson ? (
-                <div className="h-full flex flex-col items-center justify-center text-center opacity-30">
-                  {generating ? (
-                      <div className="text-center animate-pulse">
-                         <Brain size={80} className="text-indigo-400 mx-auto mb-4"/>
-                         <h3 className="text-xl font-black text-indigo-400">Diseñando Estructura Pedagógica...</h3>
-                         <p className="text-sm">Redactando 25 ejemplos y material teórico.</p>
-                      </div>
-                   ) : (
-                    <>
-                      <FileText size={100} className="text-slate-300"/>
-                      <h3 className="text-2xl font-black text-slate-300 uppercase mt-6">Visor Académico</h3>
-                      <p className="text-slate-400 max-w-sm mt-2">Configura los parámetros a la izquierda y genera tu guía docente.</p>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <div className="prose prose-indigo max-w-none">
-                  
-                  {/* --- BARRA DE HERRAMIENTAS ACTUALIZADA --- */}
-                  <div className="flex justify-between items-center mb-8 border-b pb-4 sticky top-0 bg-white z-10 flex-wrap gap-2">
-                    <h4 className="font-black text-2xl text-slate-900">Guía Generada</h4>
-                    
+            {/* ALERTAS */}
+            {incomingRequest && (
+                <div className="bg-indigo-600 rounded-2xl p-6 text-white shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4 animate-in slide-in-from-top duration-300">
+                    <div className="flex items-center gap-4">
+                         <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-2xl animate-bounce">🎓</div>
+                         <div>
+                            <h2 className="font-bold text-lg">¡Alumno Esperando!</h2>
+                            <p className="text-indigo-100">El estudiante {incomingRequest.student} solicita una clase ahora.</p>
+                         </div>
+                    </div>
                     <div className="flex gap-2">
-                        {/* COPIAR */}
-                        <button onClick={() => navigator.clipboard.writeText(generatedLesson || "")} className="p-3 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors" title="Copiar"><Copy size={20}/></button>
-                        
-                        {/* PDF (IMPRIMIR) */}
-                        <button onClick={() => window.print()} className="p-3 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors" title="Guardar PDF"><Download size={20}/></button>
-                        
-                        {/* GUARDAR EN BIBLIOTECA (EL IMPORTANTE) */}
-                        <button 
-                            onClick={handleSaveToLibrary} 
-                            disabled={saving}
-                            className="flex items-center gap-2 px-4 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 font-bold transition-colors shadow-md"
-                        >
-                            {saving ? <Loader2 size={20} className="animate-spin"/> : <Save size={20}/>} 
-                            {saving ? 'Guardando...' : 'Guardar en Biblioteca'}
+                        <button onClick={() => setIncomingRequest(null)} className="px-4 py-2 text-indigo-200 hover:text-white text-sm font-bold">Ignorar</button>
+                        <button onClick={handleAcceptCall} className="px-6 py-3 bg-white text-indigo-600 font-bold rounded-xl shadow-lg hover:bg-indigo-50 flex items-center gap-2 transition-transform hover:scale-105">
+                            <Video className="w-5 h-5" /> ACEPTAR Y ENTRAR
                         </button>
                     </div>
-                  </div>
-
-                  <div className="whitespace-pre-wrap text-base leading-relaxed text-slate-700 font-medium">
-                    {generatedLesson}
-                  </div>
                 </div>
-              )}
+            )}
+
+            {/* PERFIL */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative">
+                <div className="h-24 bg-gradient-to-r from-indigo-500 to-violet-600"></div>
+                <div className="px-8 pb-8">
+                    <div className="flex justify-between items-start -mt-10 mb-6">
+                         <div className="relative group">
+                            <div className="w-24 h-24 rounded-full border-4 border-white bg-slate-200 overflow-hidden">
+                                {profileData.avatar_url ? <img src={profileData.avatar_url} className="w-full h-full object-cover"/> : <User className="w-full h-full p-4 text-slate-400"/>}
+                            </div>
+                            <button onClick={() => fileInputRef.current?.click()} className="absolute bottom-0 right-0 bg-slate-900 text-white p-2 rounded-full"><Camera className="w-4 h-4"/></button>
+                            <input type="file" hidden ref={fileInputRef} accept="image/*" onChange={handleImageUpload} />
+                         </div>
+                         <button onClick={isEditingProfile ? handleUpdateProfile : () => setIsEditingProfile(true)} className="mt-12 px-4 py-2 rounded-lg border border-slate-200 font-bold text-sm hover:bg-slate-50 flex gap-2">
+                            {isEditingProfile ? <Save className="w-4 h-4"/> : <Edit2 className="w-4 h-4"/>} {isEditingProfile ? 'Guardar' : 'Editar'}
+                         </button>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-8">
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 uppercase">Titular</label>
+                                {isEditingProfile ? <input type="text" className="w-full p-2 border rounded font-bold" value={profileData.headline} onChange={e=>setProfileData({...profileData, headline: e.target.value})}/> : <h2 className="text-xl font-bold">{profileData.headline || 'Sin titular'}</h2>}
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 uppercase">Bio</label>
+                                {isEditingProfile ? <textarea className="w-full p-2 border rounded" rows={3} value={profileData.biography} onChange={e=>setProfileData({...profileData, biography: e.target.value})}/> : <p className="text-sm text-slate-600">{profileData.biography || 'Sin biografía'}</p>}
+                            </div>
+                        </div>
+                        <div className="space-y-4 bg-slate-50 p-6 rounded-xl">
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 uppercase">Tarifa</label>
+                                {isEditingProfile ? <input type="number" className="w-full p-2 border rounded font-bold" value={profileData.hourly_rate} onChange={e=>setProfileData({...profileData, hourly_rate: Number(e.target.value)})}/> : <div className="text-2xl font-black text-green-600">${profileData.hourly_rate}</div>}
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 uppercase">Idioma</label>
+                                {isEditingProfile ? <select className="w-full p-2 border rounded" value={profileData.specialty} onChange={e=>setProfileData({...profileData, specialty: e.target.value})}><option value="spanish">Español</option><option value="english">Inglés</option></select> : <div className="font-bold text-indigo-700 capitalize">{profileData.specialty}</div>}
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-          </div>
+            {/* 3. GESTIÓN DE RECURSOS */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 flex justify-between items-center">
+                <div>
+                      <h3 className="font-bold text-slate-900 text-lg">Biblioteca de Recursos</h3>
+                      <p className="text-slate-500 text-sm">{resources.length} archivos disponibles para tus clases.</p>
+                </div>
+                <button 
+                    onClick={() => setShowResourceModal(true)} 
+                    className="bg-indigo-600 text-white hover:bg-indigo-700 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-all shadow-md"
+                >
+                    <UploadCloud className="w-4 h-4" /> Gestionar Archivos
+                </button>
+            </div>
         </div>
+
+        {/* SIDEBAR */}
+        <div className="space-y-6">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col max-h-[400px]">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-6"><Calendar className="w-5 h-5 text-indigo-600" /> Agenda Hoy</h3>
+                {todaySchedule.map(cls => (
+                    <div key={cls.id} className="flex items-center gap-3 p-3 border-b border-slate-50">
+                        <div className="bg-indigo-50 text-indigo-700 font-bold text-xs px-2 py-1 rounded">{cls.time}</div>
+                        <div className="flex-1"><h4 className="text-sm font-bold">{cls.student}</h4></div>
+                        <Link href={`/room/${cls.link}`}><Video className="w-8 h-8 p-2 bg-green-100 text-green-600 rounded-full hover:bg-green-600 hover:text-white"/></Link>
+                    </div>
+                ))}
+                {todaySchedule.length === 0 && <p className="text-center text-sm text-slate-400">Sin clases hoy</p>}
+            </div>
+            
+            {/* BOTONES DEL SIDEBAR */}
+            <div className="space-y-3">
+                <Link href="/dashboard/teacher/schedule" className="block bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow group">
+                    <div className="flex items-center gap-4">
+                        <div className="bg-purple-100 text-purple-600 p-3 rounded-xl group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                            <Clock className="w-6 h-6"/>
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-slate-800">Mi Horario</h4>
+                            <p className="text-xs text-slate-500">Configura tu disponibilidad</p>
+                        </div>
+                        <ChevronRight className="ml-auto w-5 h-5 text-slate-300 group-hover:text-slate-500"/>
+                    </div>
+                </Link>
+
+                {/* BOTÓN: PROBAR EQUIPO */}
+                <Link href="/room/test-setup" className="block bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow group">
+                    <div className="flex items-center gap-4">
+                        <div className="bg-cyan-100 text-cyan-600 p-3 rounded-xl group-hover:bg-cyan-600 group-hover:text-white transition-colors">
+                            <Camera className="w-6 h-6"/>
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-slate-800">Probar Equipo</h4>
+                            <p className="text-xs text-slate-500">Test de Cámara y Micrófono</p>
+                        </div>
+                        <ChevronRight className="ml-auto w-5 h-5 text-slate-300 group-hover:text-slate-500"/>
+                    </div>
+                </Link>
+
+                <Link href="/dashboard/teacher/messages" className="block bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow group">
+                    <div className="flex items-center gap-4">
+                        <div className="bg-blue-100 text-blue-600 p-3 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                            <MessageSquare className="w-6 h-6"/>
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-slate-800">Mensajes</h4>
+                            <p className="text-xs text-slate-500">Chatea con tus alumnos</p>
+                        </div>
+                        <ChevronRight className="ml-auto w-5 h-5 text-slate-300 group-hover:text-slate-500"/>
+                    </div>
+                </Link>
+
+                {/* BOTÓN: TIENDA PREMIUM (LINK CORREGIDO: /premiun) */}
+                <Link href="/dashboard/teacher/premiun" className="block bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow group">
+                    <div className="flex items-center gap-4">
+                        <div className="bg-amber-100 text-amber-600 p-3 rounded-xl group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                            <ShoppingBag className="w-6 h-6"/>
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-slate-800">Tienda Premium</h4>
+                            <p className="text-xs text-slate-500">Mejora tus clases</p>
+                        </div>
+                        <ChevronRight className="ml-auto w-5 h-5 text-slate-300 group-hover:text-slate-500"/>
+                    </div>
+                </Link>
+            </div>
+
+            {/* MODULO DE SALDO COMPACTO (REDISEÑADO) */}
+            <div className="bg-slate-900 rounded-2xl p-4 text-white shadow-lg relative overflow-hidden">
+                <div className="relative z-10 flex items-center justify-between gap-2">
+                    <div className="flex flex-col">
+                        <h3 className="text-[10px] font-bold text-slate-400 uppercase leading-none mb-1">Saldo Total</h3>
+                        <div className="text-2xl font-black leading-none">${stats.earnings.toFixed(2)}</div>
+                    </div>
+                    <button onClick={() => setShowPayoutModal(true)} className="bg-indigo-600 hover:bg-indigo-500 font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-1 transition-colors">
+                        Cobrar <ChevronRight className="w-3 h-3"/>
+                    </button>
+                </div>
+            </div>
+        </div>
+      </div>
+
+      {/* MODALES RECURSOS Y PAGOS... (Sin cambios, ya incluidos arriba) */}
+      {showResourceModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full h-[600px] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                  <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                      <h3 className="font-bold text-lg text-slate-900">Mis Recursos de Clase</h3>
+                      <button onClick={() => setShowResourceModal(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+                      {resources.length === 0 ? (
+                          <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                              <UploadCloud className="w-16 h-16 mb-4 opacity-20"/>
+                              <p>No has subido archivos aún.</p>
+                          </div>
+                      ) : (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                              {resources.map(file => (
+                                  <div key={file.id} className="bg-white p-3 rounded-xl border border-slate-200 hover:shadow-md transition-shadow group relative">
+                                      <div className="h-24 bg-slate-100 rounded-lg flex items-center justify-center mb-3 text-slate-400">
+                                          {file.file_type === 'image' ? <Camera className="w-8 h-8"/> : <FileText className="w-8 h-8"/>}
+                                      </div>
+                                      <p className="text-xs font-bold text-slate-700 truncate" title={file.title}>{file.title}</p>
+                                      <p className="text-[10px] text-slate-400">{new Date(file.created_at).toLocaleDateString()}</p>
+                                      <button onClick={() => handleDeleteResource(file.id, file.file_url)} className="absolute top-2 right-2 bg-white text-red-500 p-1.5 rounded-md shadow-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50">
+                                          <Trash2 className="w-3 h-3"/>
+                                      </button>
+                                  </div>
+                              ))}
+                          </div>
+                      )}
+                  </div>
+                  <div className="p-4 border-t border-slate-200 bg-white">
+                      <input type="file" hidden ref={resourceInputRef} accept="image/*,application/pdf" onChange={handleResourceUpload}/>
+                      <button onClick={() => resourceInputRef.current?.click()} disabled={uploadingResource} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-70">
+                          {uploadingResource ? <Loader2 className="w-5 h-5 animate-spin"/> : <UploadCloud className="w-5 h-5"/>}
+                          {uploadingResource ? 'Subiendo...' : 'Subir Nuevo Archivo (PDF o Imagen)'}
+                      </button>
+                  </div>
+              </div>
+          </div>
       )}
+
+      {showPayoutModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+                  <div className="flex justify-between mb-4">
+                      <h3 className="font-bold text-lg">Retirar Fondos</h3>
+                      <button onClick={() => setShowPayoutModal(false)}><X className="w-5 h-5"/></button>
+                  </div>
+                  <p className="text-3xl font-black mb-6 text-center">${stats.earnings.toFixed(2)}</p>
+                  <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-2">
+                            <button onClick={() => setPayoutMethod('paypal')} className={`p-2 border rounded ${payoutMethod==='paypal'?'bg-indigo-50 border-indigo-600':''}`}>PayPal</button>
+                            <button onClick={() => setPayoutMethod('crypto')} className={`p-2 border rounded ${payoutMethod==='crypto'?'bg-indigo-50 border-indigo-600':''}`}>Crypto</button>
+                      </div>
+                      <input type="text" placeholder={payoutMethod==='paypal' ? 'Email PayPal' : 'Wallet Address'} className="w-full p-3 border rounded" value={payoutAddress} onChange={e=>setPayoutAddress(e.target.value)}/>
+                      <button onClick={handleRequestPayout} disabled={payoutLoading} className="w-full bg-indigo-600 text-white font-bold py-3 rounded">
+                          {payoutLoading ? 'Procesando...' : 'Confirmar'}
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
     </div>
   )
 }

@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { User, Mail, Camera, Save, Loader2, MapPin, Calendar, BookOpen, Languages } from 'lucide-react'
-import { createClient } from '@supabase/supabase-js' // <--- CAMBIO: Usamos la librería core
+// CORRECCIÓN: Usamos tu cliente configurado para Next.js, no el genérico
+import { createClient } from '@/utils/supabase/client' 
 
-// IMPORTANTE: Asegúrate de tener estas variables en tu archivo .env.local
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+// ELIMINADO: No necesitamos leer process.env manualmente aquí, el cliente ya lo hace.
+// const supabaseUrl = ... (Eliminado por redundante y propenso a error)
 
 // Estado inicial VACÍO
 const EMPTY_FORM = {
@@ -22,8 +22,8 @@ const EMPTY_FORM = {
 }
 
 export default function ProfilePage() {
-    // Inicializamos el cliente manualmente para evitar errores de importación
-    const [supabase] = useState(() => createClient(supabaseUrl, supabaseAnonKey))
+    // CORRECCIÓN: Inicialización correcta que mantiene la sesión
+    const [supabase] = useState(() => createClient())
     
     const [loading, setLoading] = useState(false)
     const [fetching, setFetching] = useState(true)
@@ -39,34 +39,39 @@ export default function ProfilePage() {
             try {
                 setFetching(true)
                 
-                // 1. Obtener usuario autenticado
-                const { data: { user } } = await supabase.auth.getUser()
+                // 1. Obtener usuario autenticado (Ahora SÍ funcionará porque comparte cookies)
+                const { data: { user }, error: authError } = await supabase.auth.getUser()
                 
-                if (user) {
-                    setFormData(prev => ({ ...prev, email: user.email || '' }))
-
-                    // 2. Buscar perfil existente
-                    const { data, error } = await supabase
-                        .from('profiles')
-                        .select('*')
-                        .eq('id', user.id)
-                        .single()
-
-                    if (data && !error) {
-                        setFormData({
-                            firstName: data.first_name || '',
-                            lastName: data.last_name || '',
-                            email: user.email || '',
-                            avatarUrl: data.avatar_url || '',
-                            age: data.age || '',
-                            educationLevel: data.education_level || '',
-                            nativeLanguage: data.native_language || '',
-                            bio: data.bio || '',
-                            location: data.location || '',
-                        })
-                        if (data.avatar_url) setAvatarPreview(data.avatar_url)
-                    }
+                if (authError || !user) {
+                    // Si falla, redirigimos o avisamos, pero no explotamos
+                    console.log("No session found in profile")
+                    return
                 }
+                
+                setFormData(prev => ({ ...prev, email: user.email || '' }))
+
+                // 2. Buscar perfil existente
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', user.id)
+                    .single()
+
+                if (data && !error) {
+                    setFormData({
+                        firstName: data.first_name || '',
+                        lastName: data.last_name || '',
+                        email: user.email || '',
+                        avatarUrl: data.avatar_url || '',
+                        age: data.age || '',
+                        educationLevel: data.education_level || '',
+                        nativeLanguage: data.native_language || '',
+                        bio: data.bio || '',
+                        location: data.location || '',
+                    })
+                    if (data.avatar_url) setAvatarPreview(data.avatar_url)
+                }
+                
             } catch (error) {
                 console.error('Error loading user data:', error)
             } finally {
@@ -74,12 +79,7 @@ export default function ProfilePage() {
             }
         }
 
-        if (supabaseUrl && supabaseAnonKey) {
-            getProfile()
-        } else {
-            alert("Faltan las variables de entorno de Supabase (NEXT_PUBLIC_SUPABASE_URL). Revisa tu archivo .env.local")
-            setFetching(false)
-        }
+        getProfile()
     }, [supabase])
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -103,7 +103,7 @@ export default function ProfilePage() {
 
         try {
             const { data: { user } } = await supabase.auth.getUser()
-            if (!user) throw new Error('No user')
+            if (!user) throw new Error('No user session')
 
             const fileExt = file.name.split('.').pop()
             const fileName = `${user.id}-${Math.random()}.${fileExt}`
@@ -136,8 +136,12 @@ export default function ProfilePage() {
         setLoading(true)
 
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) throw new Error('No user found. Please login again.')
+            // Verificación robusta de sesión antes de guardar
+            const { data: { user }, error: authError } = await supabase.auth.getUser()
+            
+            if (authError || !user) {
+                throw new Error('Sesión expirada. Por favor recarga la página e inicia sesión.')
+            }
 
             const updates = {
                 id: user.id,
@@ -156,9 +160,9 @@ export default function ProfilePage() {
             if (error) throw error
 
             alert("Profile updated successfully!")
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error updating profile:', error)
-            alert("Error saving profile. Check console for details.")
+            alert(`Error saving profile: ${error.message}`)
         } finally {
             setLoading(false)
         }
