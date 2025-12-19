@@ -1,12 +1,10 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { User, Mail, Camera, Save, Loader2, MapPin, Calendar, BookOpen, Languages } from 'lucide-react'
-// CORRECCIÓN: Usamos tu cliente configurado para Next.js, no el genérico
+import { User, Mail, Camera, Save, Loader2, MapPin, Calendar, BookOpen, Languages, ArrowLeft } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client' 
-
-// ELIMINADO: No necesitamos leer process.env manualmente aquí, el cliente ya lo hace.
-// const supabaseUrl = ... (Eliminado por redundante y propenso a error)
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 // Estado inicial VACÍO
 const EMPTY_FORM = {
@@ -22,11 +20,11 @@ const EMPTY_FORM = {
 }
 
 export default function ProfilePage() {
-    // CORRECCIÓN: Inicialización correcta que mantiene la sesión
     const [supabase] = useState(() => createClient())
+    const router = useRouter()
     
-    const [loading, setLoading] = useState(false)
-    const [fetching, setFetching] = useState(true)
+    const [loading, setLoading] = useState(false) // Para guardar
+    const [fetching, setFetching] = useState(true) // Para cargar
     const [uploading, setUploading] = useState(false)
     
     const [formData, setFormData] = useState(EMPTY_FORM)
@@ -39,18 +37,17 @@ export default function ProfilePage() {
             try {
                 setFetching(true)
                 
-                // 1. Obtener usuario autenticado (Ahora SÍ funcionará porque comparte cookies)
+                // 1. Obtener usuario autenticado
                 const { data: { user }, error: authError } = await supabase.auth.getUser()
                 
                 if (authError || !user) {
-                    // Si falla, redirigimos o avisamos, pero no explotamos
-                    console.log("No session found in profile")
+                    router.push('/login')
                     return
                 }
                 
                 setFormData(prev => ({ ...prev, email: user.email || '' }))
 
-                // 2. Buscar perfil existente
+                // 2. Buscar perfil existente en 'profiles'
                 const { data, error } = await supabase
                     .from('profiles')
                     .select('*')
@@ -80,7 +77,7 @@ export default function ProfilePage() {
         }
 
         getProfile()
-    }, [supabase])
+    }, [supabase, router])
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target
@@ -105,8 +102,9 @@ export default function ProfilePage() {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) throw new Error('No user session')
 
+            // Nombre único para evitar caché
             const fileExt = file.name.split('.').pop()
-            const fileName = `${user.id}-${Math.random()}.${fileExt}`
+            const fileName = `${user.id}-${Date.now()}.${fileExt}`
 
             // Subida REAL
             const { error: uploadError } = await supabase.storage
@@ -122,9 +120,12 @@ export default function ProfilePage() {
 
             setFormData(prev => ({ ...prev, avatarUrl: publicUrl }))
             
-        } catch (error) {
+            // Guardar URL inmediatamente en BD
+            await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id)
+            
+        } catch (error: any) {
             console.error('Error uploading avatar:', error)
-            alert('Error uploading image. Make sure you have created the "avatars" bucket in Supabase.')
+            alert('Error al subir imagen: ' + error.message)
         } finally {
             setUploading(false)
         }
@@ -136,18 +137,17 @@ export default function ProfilePage() {
         setLoading(true)
 
         try {
-            // Verificación robusta de sesión antes de guardar
             const { data: { user }, error: authError } = await supabase.auth.getUser()
             
             if (authError || !user) {
-                throw new Error('Sesión expirada. Por favor recarga la página e inicia sesión.')
+                throw new Error('Sesión expirada. Por favor recarga la página.')
             }
 
             const updates = {
-                id: user.id,
+                id: user.id, // ID obligatorio para el upsert
                 first_name: formData.firstName,
                 last_name: formData.lastName,
-                age: formData.age,
+                age: formData.age ? parseInt(formData.age) : null, // Asegurar tipo número si es int en BD
                 education_level: formData.educationLevel,
                 native_language: formData.nativeLanguage,
                 location: formData.location,
@@ -156,13 +156,17 @@ export default function ProfilePage() {
                 updated_at: new Date().toISOString(),
             }
 
+            // Upsert maneja Insert o Update automáticamente
             const { error } = await supabase.from('profiles').upsert(updates)
+            
             if (error) throw error
 
-            alert("Profile updated successfully!")
+            alert("✅ Perfil actualizado correctamente")
+            router.refresh()
+            
         } catch (error: any) {
             console.error('Error updating profile:', error)
-            alert(`Error saving profile: ${error.message}`)
+            alert(`Error al guardar: ${error.message}`)
         } finally {
             setLoading(false)
         }
@@ -173,11 +177,15 @@ export default function ProfilePage() {
     }
 
     return (
-        <div className="min-h-screen bg-slate-50 p-6 md:p-12 font-sans">
+        <div className="min-h-screen bg-slate-50 p-6 md:p-12 font-sans text-slate-900">
             <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
                 
                 {/* Header with Gradient */}
                 <div className="h-32 bg-gradient-to-r from-indigo-600 to-purple-600 relative">
+                    <Link href="/dashboard/student" className="absolute top-4 left-4 text-white/80 hover:text-white flex items-center gap-2 font-bold z-10 bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm transition-colors">
+                        <ArrowLeft size={16}/> Dashboard
+                    </Link>
+
                     <div className="absolute -bottom-16 left-8">
                         <div className="relative group cursor-pointer" onClick={handleAvatarClick} title="Change Profile Picture">
                             {/* Avatar Circle */}

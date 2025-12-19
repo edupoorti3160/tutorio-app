@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Search, MapPin, Star, Calendar, Clock, CheckCircle, Loader2, User, CreditCard } from 'lucide-react'
+import { Search, MapPin, Calendar, Clock, Loader2, CreditCard } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 export default function FindTutorsPage() {
   const router = useRouter()
-  // Asegúrate de usar tu createClient personalizado
   const [supabase] = useState(() => createClient())
   
   const [loading, setLoading] = useState(true)
@@ -16,7 +15,7 @@ export default function FindTutorsPage() {
   const [availableSlots, setAvailableSlots] = useState<any[]>([])
   const [bookingLoading, setBookingLoading] = useState<string | null>(null)
 
-  // 1. Fetch Tutors (Teachers)
+  // 1. Fetch Tutors
   useEffect(() => {
     const fetchTutors = async () => {
       try {
@@ -35,36 +34,40 @@ export default function FindTutorsPage() {
     fetchTutors()
   }, [supabase])
 
-  // 2. Fetch Schedule (VERSIÓN DEBUG: SIN FILTRO DE FECHA)
+  // 2. Fetch Schedule (CORREGIDO: Lee de 'availability')
   const handleViewSchedule = async (tutor: any) => {
     setSelectedTutor(tutor)
     setAvailableSlots([])
     
-    // const today = new Date().toISOString().split('T')[0]
-
+    // Obtenemos disponibilidad de la tabla NUEVA
     const { data } = await supabase
-        .from('bookings')
+        .from('availability')
         .select('*')
         .eq('teacher_id', tutor.id)
-        .is('student_id', null) // Only free slots
-        // .gte('date', today) <--- COMENTADO TEMPORALMENTE PARA VERIFICAR TODO
-        .order('date', { ascending: true })
-        .order('time', { ascending: true })
+        // Opcional: Filtrar fechas pasadas si quieres
+        // .gte('day_of_week', new Date().toISOString().split('T')[0]) 
     
-    if (data) setAvailableSlots(data)
+    if (data) {
+        // Ordenamos por fecha y hora
+        const sorted = data.sort((a:any, b:any) => {
+            if (a.day_of_week !== b.day_of_week) return a.day_of_week.localeCompare(b.day_of_week)
+            return a.start_time.localeCompare(b.start_time)
+        })
+        setAvailableSlots(sorted)
+    }
   }
 
-  // 3. Book Slot logic (CON COBRO REAL)
-  const handleBookSlot = async (slotId: string) => {
+  // 3. Book Slot logic (CORREGIDO: Crea reserva nueva)
+  const handleBookSlot = async (slot: any) => {
     if (!selectedTutor) return;
-    setBookingLoading(slotId)
+    setBookingLoading(slot.id)
 
     try {
-        // A. Obtener Usuario Actual
+        // A. Usuario Actual
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return router.push('/login')
 
-        // B. Obtener Saldo del Estudiante
+        // B. Verificar Saldo
         const { data: wallet } = await supabase
             .from('wallets')
             .select('balance')
@@ -72,42 +75,45 @@ export default function FindTutorsPage() {
             .single()
 
         const studentBalance = Number(wallet?.balance || 0)
-        const classPrice = Number(selectedTutor.hourly_rate || 15) // Precio del maestro (o 15 base)
+        const classPrice = Number(selectedTutor.hourly_rate || 15)
 
-        // C. Verificar Fondos
         if (studentBalance < classPrice) {
-            alert(`⚠️ Saldo insuficiente.\n\nTu saldo: $${studentBalance.toFixed(2)}\nPrecio clase: $${classPrice.toFixed(2)}\n\nPor favor recarga tu billetera en el Dashboard.`)
-            return // Detener si no hay dinero
+            alert(`⚠️ Saldo insuficiente.\nTu saldo: $${studentBalance}\nPrecio: $${classPrice}`)
+            return
         }
 
-        // D. TRANSACCIÓN: Descontar Saldo
+        // C. Transacción: Descontar Saldo
         const { error: walletError } = await supabase
             .from('wallets')
             .update({ balance: studentBalance - classPrice })
             .eq('user_id', user.id)
 
-        if (walletError) throw new Error("Error procesando el pago en billetera.")
+        if (walletError) throw new Error("Error procesando pago.")
 
-        // E. Reservar Clase (Guardando precio pagado para el maestro)
+        // D. CREAR RESERVA (Insertar en 'bookings')
         const { error: bookingError } = await supabase
             .from('bookings')
-            .update({ 
+            .insert({
+                teacher_id: selectedTutor.id,
                 student_id: user.id,
+                date: slot.day_of_week, // Usamos la fecha del slot
+                time: slot.start_time,  // Usamos la hora de inicio
                 status: 'confirmed',
                 topic: 'Clase Reservada',
-                price_paid: classPrice
+                price_paid: classPrice,
+                meeting_link: `room-${selectedTutor.id}-${Date.now()}` // Link único
             })
-            .eq('id', slotId)
 
         if (bookingError) {
-            // Rollback simple si falla la reserva (devolver dinero)
+            // Rollback (Devolver dinero si falla)
             await supabase.from('wallets').update({ balance: studentBalance }).eq('user_id', user.id)
-            throw new Error("Error al reservar la hora. Se ha devuelto tu saldo.")
+            throw new Error("Error creando reserva. Saldo devuelto.")
         }
 
-        alert(`✅ ¡Clase reservada con éxito!\nSe descontaron $${classPrice.toFixed(2)} de tu saldo.`)
-        
-        // F. Redirigir al Dashboard
+        // E. (Opcional) Borrar el slot de disponibilidad para que nadie más lo tome
+        await supabase.from('availability').delete().eq('id', slot.id)
+
+        alert(`✅ ¡Clase reservada con éxito!\nSe descontaron $${classPrice.toFixed(2)}`)
         setSelectedTutor(null)
         router.push('/dashboard/student')
 
@@ -124,13 +130,11 @@ export default function FindTutorsPage() {
   return (
     <div className="min-h-screen bg-slate-50 p-6 md:p-8 font-sans text-slate-900">
         
-        {/* Header */}
         <div className="mb-8">
             <h1 className="text-3xl font-bold text-slate-900">Find a Tutor</h1>
             <p className="text-slate-500">Explore our list of experts and book your class today.</p>
         </div>
 
-        {/* Tutors Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {tutors.length === 0 ? (
                 <div className="col-span-full text-center py-12 bg-white rounded-2xl border border-dashed border-slate-300">
@@ -175,25 +179,20 @@ export default function FindTutorsPage() {
         {selectedTutor && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
                 <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
-                    
-                    {/* Modal Header */}
                     <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
                         <div>
                             <h3 className="text-xl font-bold">Book with {selectedTutor.first_name}</h3>
                             <p className="text-slate-400 text-xs">Price per class: <span className="text-green-400 font-bold">${selectedTutor.hourly_rate || 15}</span></p>
                         </div>
-                        <button onClick={() => setSelectedTutor(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-                            ✕
-                        </button>
+                        <button onClick={() => setSelectedTutor(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors">✕</button>
                     </div>
 
-                    {/* Slots List */}
                     <div className="p-6 overflow-y-auto">
                         {availableSlots.length === 0 ? (
                             <div className="text-center py-8">
                                 <Calendar className="w-12 h-12 text-slate-200 mx-auto mb-3"/>
                                 <p className="text-slate-600 font-bold">No slots available</p>
-                                <p className="text-sm text-slate-400">This tutor hasn't posted any free slots recently.</p>
+                                <p className="text-sm text-slate-400">This tutor hasn't posted any availability yet.</p>
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 gap-3">
@@ -204,12 +203,12 @@ export default function FindTutorsPage() {
                                                 <Clock className="w-5 h-5"/>
                                             </div>
                                             <div>
-                                                <p className="font-bold text-slate-900">{slot.time}</p>
-                                                <p className="text-xs text-slate-500 uppercase font-bold">{slot.date}</p>
+                                                <p className="font-bold text-slate-900">{slot.start_time.slice(0,5)} - {slot.end_time.slice(0,5)}</p>
+                                                <p className="text-xs text-slate-500 uppercase font-bold">{slot.day_of_week}</p>
                                             </div>
                                         </div>
                                         <button 
-                                            onClick={() => handleBookSlot(slot.id)}
+                                            onClick={() => handleBookSlot(slot)}
                                             disabled={bookingLoading === slot.id}
                                             className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md transition-all disabled:opacity-50 flex items-center gap-2"
                                         >
