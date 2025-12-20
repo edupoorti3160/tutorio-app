@@ -75,10 +75,23 @@ export default function TeacherDashboard() {
           .select(`id, date, time, status, topic, meeting_link, student:profiles!student_id(first_name, last_name)`, { count: 'exact' })
           .eq('teacher_id', user.id).gte('date', today).order('time', { ascending: true })
 
-        // 3. Ganancias
+        // 3. Ganancias (CORREGIDO: LEYENDO DE WALLETS)
         let totalEarnings = 0;
-        const { data: completed } = await supabase.from('bookings').select('price_paid').eq('teacher_id', user.id).eq('status', 'completed')
-        if (completed) totalEarnings = completed.reduce((sum, b) => sum + (b.price_paid || 0), 0)
+        
+        // Intentamos leer la billetera real
+        const { data: wallet } = await supabase
+            .from('wallets')
+            .select('balance')
+            .eq('user_id', user.id)
+            .single();
+
+        if (wallet) {
+            totalEarnings = Number(wallet.balance) || 0;
+        } else {
+            // Fallback antiguo solo si no hay wallet (raro)
+            const { data: completed } = await supabase.from('bookings').select('price_paid').eq('teacher_id', user.id).eq('status', 'completed')
+            if (completed) totalEarnings = completed.reduce((sum, b) => sum + (b.price_paid || 0), 0)
+        }
 
         if (bookings) {
           const formatted = bookings.map((b: any) => ({
