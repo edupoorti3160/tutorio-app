@@ -344,11 +344,23 @@ export default function Classroom() {
     }
 
     // --- FUNCIÓN CLAVE (PARA CONECTAR CON PIZARRA) ---
-    const handleShareResource = (resource: any) => {
-        // DETECCIÓN: Si es imagen, mándala a la pizarra
+    const handleShareResource = async (resource: any) => {
+        // DETECCIÓN: Si es imagen, dibujarla en la pizarra (canvas) para poder escribir encima
         if (resource.file_type === 'image' || resource.file_url?.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
-            setWhiteboardImage(resource.file_url); 
-            setActiveResource(null); 
+            setWhiteboardImage(resource.file_url);
+            setActiveResource(null);
+
+            // Enviar evento a la pizarra (todos los clientes en room-${roomId})
+            await supabase.channel(`room-${roomId}`).send({
+                type: 'broadcast',
+                event: 'draw_image',
+                payload: {
+                    // Coordenadas aproximadas al centro; el Whiteboard las usa tal cual
+                    x: 200,
+                    y: 150,
+                    url: resource.file_url
+                }
+            });
         } else {
             // Si no es imagen (texto/pdf), usar el overlay
             setActiveResource(resource);
@@ -382,7 +394,7 @@ export default function Classroom() {
     return (
         <div className="h-screen bg-slate-100 flex flex-col font-sans overflow-hidden">
             {/* HEADER MEJORADO */}
-            <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 z-10 shadow-sm">
+            <header className="h-16 bg-white border-b border-slate-200 flex items_center justify-between px-6 shrink-0 z-10 shadow-sm">
                 <div className="flex items-center gap-3">
                     <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`}/>
                     
@@ -420,7 +432,7 @@ export default function Classroom() {
                         </div>
                         <span className="text-slate-300 font-light mx-1">➜</span>
                         <div className="relative group">
-                            <select value={targetLang} onChange={(e) => setTargetLang(e.target.value)} className="appearance-none bg-transparent font-bold text-indigo-600 outline-none cursor-pointer text-sm pr-6 hover:text-indigo-800">
+                            <select value={targetLang} onChange={(e) => setTargetLang(e.target.value)} className="appearance-none bg-transparent font-bold text-indigo-600 outline_none cursor-pointer text-sm pr-6 hover:text-indigo-800">
                                 {SUPPORTED_LANGUAGES.map(lang => (
                                     <option key={`tgt-${lang.code}`} value={lang.code}>{lang.flag} {lang.code.toUpperCase()}</option>
                                 ))}

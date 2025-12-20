@@ -63,9 +63,9 @@ export function Whiteboard({ roomId, role }: WhiteboardProps) {
       student: {
           undo: "Undo", redo: "Redo", clear: "Clear",
           bgWhite: "White", bgGrid: "Grid", bgLines: "Lines", bgDots: "Dots",
-          pen: "Pencil", highlighter: "Highlighter", eraser: "Eraser", text: "Text",
-          arrow: "Arrow", line: "Line", rect: "Square", circle: "Circle", triangle: "Triangle", star: "Star",
-          fill: "Fill", stroke: "Stroke",
+          pen: "Pen", highlighter: "Highlighter", eraser: "Eraser", text: "Text",
+          arrow: "Arrow", line: "Line", rect: "Rectangle", circle: "Circle", triangle: "Triangle", star: "Star",
+          fill: "Fill", stroke: "Outline",
           upload: "Upload Image", laser: "Laser Pointer",
           placeholder: "Type here..."
       }
@@ -129,7 +129,7 @@ export function Whiteboard({ roomId, role }: WhiteboardProps) {
     const clientX = e.touches ? e.touches[0].clientX : e.clientX
     const clientY = e.touches ? e.touches[0].clientY : e.clientY
 
-    // Ajustar por zoom (convertir coordenadas de pantalla a coordenadas del canvas)
+    // Ajustar por zoom
     const x = (clientX - rect.left) / zoom
     const y = (clientY - rect.top) / zoom
 
@@ -478,38 +478,38 @@ export function Whiteboard({ roomId, role }: WhiteboardProps) {
                   <button
                     onClick={() => setLineWidth(2)}
                     className={`w-2 h-2 rounded-full ${lineWidth===2 ? 'bg-indigo-600' : 'bg-slate-300'}`}
-                    title="Línea delgada"
+                    title={role === 'teacher' ? 'Línea delgada' : 'Thin line'}
                   />
                   <button
                     onClick={() => setLineWidth(6)}
                     className={`w-2 h-2 rounded-full ${lineWidth===6 ? 'bg-indigo-600' : 'bg-slate-300'}`}
-                    title="Línea media"
+                    title={role === 'teacher' ? 'Línea media' : 'Medium line'}
                   />
                   <button
                     onClick={() => setLineWidth(12)}
                     className={`w-2 h-2 rounded-full ${lineWidth===12 ? 'bg-indigo-600' : 'bg-slate-300'}`}
-                    title="Línea gruesa"
+                    title={role === 'teacher' ? 'Línea gruesa' : 'Thick line'}
                   />
                 </div>
 
                 <ToolBtn active={tool==='highlighter'} icon={<Highlighter size={20}/>} onClick={()=>setTool('highlighter')} title={t.highlighter}/>
                 <ToolBtn active={tool==='eraser'} icon={<Eraser size={20}/>} onClick={()=>setTool('eraser')} title={t.eraser}/>
-                {/* botones de grosor para borrador (usa el mismo lineWidth) */}
+                {/* botones de grosor para borrador */}
                 <div className="flex justify-center gap-1 py-1">
                   <button
                     onClick={() => setLineWidth(4)}
                     className={`w-2 h-2 rounded-full border ${lineWidth===4 ? 'bg-red-500 border-red-500' : 'bg-slate-100 border-slate-300'}`}
-                    title="Borrador delgado"
+                    title={role === 'teacher' ? 'Borrador delgado' : 'Thin eraser'}
                   />
                   <button
                     onClick={() => setLineWidth(10)}
                     className={`w-2 h-2 rounded-full border ${lineWidth===10 ? 'bg-red-500 border-red-500' : 'bg-slate-100 border-slate-300'}`}
-                    title="Borrador medio"
+                    title={role === 'teacher' ? 'Borrador medio' : 'Medium eraser'}
                   />
                   <button
                     onClick={() => setLineWidth(18)}
                     className={`w-2 h-2 rounded-full border ${lineWidth===18 ? 'bg-red-500 border-red-500' : 'bg-slate-100 border-slate-300'}`}
-                    title="Borrador grueso"
+                    title={role === 'teacher' ? 'Borrador grueso' : 'Thick eraser'}
                   />
                 </div>
 
