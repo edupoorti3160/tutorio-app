@@ -57,18 +57,31 @@ export default function StudentMessages() {
         if (!user) return
         setCurrentUser(user)
 
-        // Cargar contactos reales
-        const { data: myContacts } = await supabase.rpc('get_my_contacts', { p_user_id: user.id })
+        // Cargar contactos reales usando la función SQL corregida
+        const { data: myContacts, error } = await supabase.rpc('get_my_contacts', { p_user_id: user.id })
 
         if (myContacts) {
-            setContacts(myContacts.map((c: any) => ({
-                id: c.contact_id || c.id,
-                name: (c.first_name || c.last_name) ? `${c.first_name} ${c.last_name}` : (c.email || 'Usuario'),
-                email: 'Maestro',
-                lastMsg: 'Haz click para chatear',
-                time: c.last_interaction ? new Date(c.last_interaction).toLocaleDateString() : '',
-                avatar_url: c.avatar_url
-            })))
+            setContacts(myContacts.map((c: any) => {
+                // LÓGICA DE NOMBRE ROBUSTA:
+                // 1. Intenta Nombre + Apellido
+                // 2. Si no, intenta la parte del email antes del @
+                // 3. Si no, 'Usuario'
+                let displayName = 'Usuario';
+                if (c.first_name && c.first_name !== 'Sin Nombre' && c.first_name !== 'null') {
+                    displayName = `${c.first_name} ${c.last_name || ''}`.trim();
+                } else if (c.email) {
+                    displayName = c.email.split('@')[0];
+                }
+
+                return {
+                    id: c.contact_id || c.id,
+                    name: displayName,
+                    email: 'Maestro',
+                    lastMsg: 'Haz click para chatear',
+                    time: c.last_interaction ? new Date(c.last_interaction).toLocaleDateString() : '',
+                    avatar_url: c.avatar_url
+                };
+            }))
         }
         setLoading(false)
     }
@@ -88,10 +101,7 @@ export default function StudentMessages() {
           
           if (data) {
               setMessages(data.map((m: any) => {
-                  // Lógica inteligente: Si el mensaje ya tiene traducción guardada en mi idioma, la uso.
-                  // Si no, uso el texto original.
                   const translation = m.payload?.translated_text
-                  const originalLang = m.payload?.original_lang
                   
                   return {
                       id: m.id,
@@ -121,15 +131,13 @@ export default function StudentMessages() {
 
       return () => { supabase.removeChannel(channel) }
 
-  }, [activeChatId, currentUser, myLanguage]) // Recargar si cambio de idioma (idealmente deberíamos re-traducir, pero por ahora recarga)
+  }, [activeChatId, currentUser, myLanguage])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
 
   // 3. ENVIAR MENSAJE (TRADUCIENDO AL IDIOMA DEL RECEPTOR)
-  // Nota: Como no sabemos qué idioma quiere el maestro, traducimos a un estándar (Español o Inglés) o guardamos sin traducir
-  // y dejamos que EL RECEPTOR traduzca al leer (que es la mejor arquitectura).
   const sendMessage = async (e: any) => {
     e.preventDefault();
     if (!msgInput.trim() || !activeChatId || !currentUser) return;
@@ -138,11 +146,9 @@ export default function StudentMessages() {
     const textToSend = msgInput
     setMsgInput("") 
 
-    // ESTRATEGIA: Guardamos el mensaje original.
-    // Opcional: Podríamos pre-traducir al español si asumimos que el maestro habla español.
     let translatedText = ""
     try {
-        // Traducimos al idioma CONTRARIO al mío por cortesía (ej. si yo tengo seleccionado EN, traduzco a ES)
+        // Traducimos al idioma CONTRARIO al mío por cortesía
         const targetLang = myLanguage === 'en' ? 'es' : 'en' 
         const res = await fetch('/api/translate', {
             method: 'POST',
@@ -150,7 +156,7 @@ export default function StudentMessages() {
         })
         const data = await res.json()
         if(data.translatedText) translatedText = data.translatedText
-    } catch (err) { console.error(err) }
+    } catch (err) { console.error("Error traduciendo (se enviará igual):", err) }
 
     const { error } = await supabase.from('messages').insert({
         sender_id: currentUser.id,
@@ -160,7 +166,10 @@ export default function StudentMessages() {
     })
 
     setSending(false)
-    if (error) alert("Error enviando")
+    if (error) {
+        alert("Error enviando mensaje. Intenta de nuevo.")
+        setMsgInput(textToSend) // Restaurar texto si falla
+    }
   }
 
   const activeContact = contacts.find(c => c.id === activeChatId)
