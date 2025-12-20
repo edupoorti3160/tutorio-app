@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { useWebRTC } from '@/hooks/useWebRTC' 
-import Whiteboard from '@/components/whiteboard'
+import Whiteboard from '@/components/Whiteboard' 
 import { Mic, MicOff, Video, VideoOff, Send, Languages, Loader2, X, Image as ImageIcon, CheckCircle, ZoomIn, ZoomOut, RotateCw, RotateCcw, Trash2, Volume2, ChevronDown } from 'lucide-react'
 
 
@@ -148,7 +148,6 @@ export default function Classroom() {
     useEffect(() => {
         if (userRole === 'teacher' && userId) {
             const fetchResources = async () => {
-                // CAMBIO: Usamos la tabla 'resources' del Dashboard
                 const { data } = await supabase.from('resources').select('*').eq('teacher_id', userId).order('created_at', { ascending: false });
                 if (data) setResources(data);
             };
@@ -384,14 +383,14 @@ export default function Classroom() {
     }
 
 
-    // --- FUNCIÓN CLAVE MODIFICADA (PARA CONECTAR CON PIZARRA) ---
+    // --- FUNCIÓN CLAVE (PARA CONECTAR CON PIZARRA) ---
     const handleShareResource = (resource: any) => {
-        // DETECCIÓN INTELIGENTE: Si es imagen, mándala a la pizarra
+        // DETECCIÓN: Si es imagen, mándala a la pizarra
         if (resource.file_type === 'image' || resource.file_url?.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
-            setWhiteboardImage(resource.file_url); // <--- ESTO ACTIVA LA IMAGEN EN WHITEBOARD
-            setActiveResource(null); // Ocultar overlay flotante
+            setWhiteboardImage(resource.file_url); 
+            setActiveResource(null); 
         } else {
-            // Si no es imagen (texto/pdf), usar el overlay antiguo
+            // Si no es imagen (texto/pdf), usar el overlay
             setActiveResource(resource);
             setWhiteboardImage(null);
         }
@@ -429,7 +428,9 @@ export default function Classroom() {
             <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 z-10 shadow-sm">
                 <div className="flex items-center gap-3">
                     <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`}/>
-                    <span className="font-bold text-slate-800 text-lg">AULA <span className="text-indigo-600">#{roomId?.slice(0,4)}</span></span>
+                    
+                    {/* AQUI ARREGLAMOS EL TITULO PARA QUE DIGA SOLO AULA */}
+                    <span className="font-bold text-slate-800 text-lg">AULA</span>
                 </div>
                 
                 <div className="flex gap-4 items-center">
@@ -480,10 +481,10 @@ export default function Classroom() {
                 <div className="flex-1 bg-slate-100 relative flex flex-col items-center justify-center p-4">
                     <div className="w-full h-full border border-slate-300 rounded-2xl overflow-hidden shadow-lg bg-white relative">
                           
-                          {/* AQUI PASAMOS LA NUEVA PROP "externalImage" Y EL "role" */}
+                          {/* WHITEBOARD con Prop de Imagen y userRole corregido */}
                           <Whiteboard 
                                 roomId={roomId as string} 
-                                userRole={userRole || 'student'}
+                                userRole={userRole || 'student'} 
                                 socket={null} 
                                 externalImage={whiteboardImage} 
                           />
@@ -497,7 +498,6 @@ export default function Classroom() {
                                         <div className="whitespace-pre-wrap">{activeResource.content_text}</div>
                                     </div>
                                 ) : ( 
-                                    /* FALLBACK: Si no es imagen soportada por whiteboard, muéstrala flotante */
                                     activeResource.file_url ? <img src={activeResource.file_url} className="w-full h-full object-contain" alt="Recurso" /> : null 
                                 )}
                                 <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-[50] pointer-events-auto">
