@@ -65,7 +65,7 @@ export default function TeacherMessages() {
         if (myContacts) {
             setContacts(myContacts.map((c: any) => ({
                 id: c.contact_id || c.id,
-                name: `${c.first_name} ${c.last_name}`,
+                name: (c.first_name || c.last_name) ? `${c.first_name} ${c.last_name}` : (c.email || 'Usuario'),
                 email: 'Estudiante',
                 lastMsg: 'Haz click para chatear',
                 time: c.last_interaction ? new Date(c.last_interaction).toLocaleDateString() : '',
