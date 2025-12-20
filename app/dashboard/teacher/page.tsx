@@ -63,7 +63,7 @@ export default function TeacherDashboard() {
         if (profile) {
           setProfileData({
             first_name: profile.first_name || '', last_name: profile.last_name || '',
-            headline: profile.headline || '', biography: profile.biography || '',
+            headline: profile.headline || '', biography: profile.bio || profile.biography || '', // Fallback por si bio se llama distinto
             hourly_rate: profile.hourly_rate || 15, specialty: profile.specialty || 'spanish',
             avatar_url: profile.avatar_url || ''
           })
@@ -147,13 +147,35 @@ export default function TeacherDashboard() {
       }
   }
 
-  // --- FUNCIONES PERFIL ---
+  // --- FUNCIONES PERFIL (CORREGIDO CON RPC) ---
   const handleUpdateProfile = async () => {
     setSavingProfile(true)
     try {
-      await supabase.from('profiles').update({ ...profileData, hourly_rate: Number(profileData.hourly_rate) }).eq('id', user.id)
+      // PREPARAMOS EL PAQUETE JSON PARA LA FUNCIÓN SEGURA
+      const payload = {
+          id: user.id,
+          first_name: profileData.first_name,
+          last_name: profileData.last_name,
+          headline: profileData.headline,
+          bio: profileData.biography, // Enviamos como 'bio' que es el nombre en DB
+          hourly_rate: String(profileData.hourly_rate), // Enviamos como string, SQL lo convierte
+          specialty: profileData.specialty,
+          avatar_url: profileData.avatar_url
+      }
+
+      // USAMOS LA FUNCIÓN SEGURA EN LUGAR DEL UPDATE DIRECTO
+      const { error } = await supabase.rpc('update_profile_dynamic', { payload })
+      
+      if(error) throw error
+
+      alert("✅ Perfil guardado correctamente")
       setIsEditingProfile(false)
-    } catch (e) { alert('Error al guardar') } finally { setSavingProfile(false) }
+    } catch (e: any) { 
+        console.error(e)
+        alert('Error al guardar: ' + e.message) 
+    } finally { 
+        setSavingProfile(false) 
+    }
   }
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -164,8 +186,17 @@ export default function TeacherDashboard() {
     try {
       await supabase.storage.from('avatars').upload(filePath, file)
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath)
+      
+      // Actualizamos estado local
       setProfileData(prev => ({ ...prev, avatar_url: publicUrl }))
-      await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id)
+      
+      // Actualizamos en BD usando también la función segura
+      const payload = {
+          id: user.id,
+          avatar_url: publicUrl
+      }
+      await supabase.rpc('update_profile_dynamic', { payload })
+
     } catch (e:any) { alert(e.message) } finally { setSavingProfile(false) }
   }
 
@@ -278,7 +309,7 @@ export default function TeacherDashboard() {
                             <input type="file" hidden ref={fileInputRef} accept="image/*" onChange={handleImageUpload} />
                          </div>
                          <button onClick={isEditingProfile ? handleUpdateProfile : () => setIsEditingProfile(true)} className="mt-12 px-4 py-2 rounded-lg border border-slate-200 font-bold text-sm hover:bg-slate-50 flex gap-2">
-                            {isEditingProfile ? <Save className="w-4 h-4"/> : <Edit2 className="w-4 h-4"/>} {isEditingProfile ? 'Guardar' : 'Editar'}
+                           {isEditingProfile ? <Save className="w-4 h-4"/> : <Edit2 className="w-4 h-4"/>} {isEditingProfile ? 'Guardar' : 'Editar'}
                          </button>
                     </div>
 

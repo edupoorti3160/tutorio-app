@@ -136,7 +136,7 @@ export default function ProfilePage() {
             
             if (error) throw error
 
-            alert("✅ Perfil guardado con éxito")
+            alert("✅ Success! Your profile has been saved")
             router.refresh()
             
         } catch (error: any) {
