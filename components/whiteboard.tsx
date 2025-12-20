@@ -6,7 +6,7 @@ import {
   Pencil, Eraser, Trash2, Undo, Redo, 
   Square, Circle, Minus, Type, Grid, MousePointer2, 
   Highlighter, Triangle, Star, ArrowRight, Image as ImageIcon,
-  AlignJustify, Hash
+  AlignJustify, Hash, ZoomIn, ZoomOut
 } from 'lucide-react'
 
 // AHORA ACEPTAMOS 'role' COMO PROP
@@ -30,6 +30,9 @@ export function Whiteboard({ roomId, role }: WhiteboardProps) {
   const [fillShape, setFillShape] = useState(false)
   const [lineWidth, setLineWidth] = useState(2)
   const [background, setBackground] = useState<BackgroundType>('white')
+
+  // NUEVO: zoom global del canvas
+  const [zoom, setZoom] = useState(1) // 1 = 100%
   
   // --- ESTADOS INTERNOS ---
   const [isDrawing, setIsDrawing] = useState(false)
@@ -68,9 +71,8 @@ export function Whiteboard({ roomId, role }: WhiteboardProps) {
       }
   }
 
-  // Seleccionar textos según el rol (si role es null o undefined, fallback a student por seguridad)
+  // Seleccionar textos según el rol
   const t = role === 'teacher' ? LABELS.teacher : LABELS.student;
-
 
   // --- 1. SETUP RESPONSIVO ---
   useEffect(() => {
@@ -92,11 +94,10 @@ export function Whiteboard({ roomId, role }: WhiteboardProps) {
         if (context) {
             context.lineCap = 'round'
             context.lineJoin = 'round'
+            context.fillStyle = '#ffffff00' 
+            context.clearRect(0, 0, canvas.width, canvas.height)
             if (savedData) {
                 context.putImageData(savedData, 0, 0)
-            } else {
-                context.fillStyle = '#ffffff00' 
-                context.clearRect(0, 0, canvas.width, canvas.height)
             }
             setCtx(context)
             if (history.length === 0) saveHistory(context)
@@ -118,8 +119,7 @@ export function Whiteboard({ roomId, role }: WhiteboardProps) {
         window.removeEventListener('resize', initCanvas)
         supabase.removeChannel(channel) 
     }
-  }, [roomId]) // Eliminamos history de deps para evitar loops
-
+  }, [roomId])
 
   // --- 2. MOTOR DE DIBUJO ---
   const getCoords = (e: any) => {
@@ -128,7 +128,12 @@ export function Whiteboard({ roomId, role }: WhiteboardProps) {
     const rect = canvas.getBoundingClientRect()
     const clientX = e.touches ? e.touches[0].clientX : e.clientX
     const clientY = e.touches ? e.touches[0].clientY : e.clientY
-    return { x: clientX - rect.left, y: clientY - rect.top }
+
+    // Ajustar por zoom (convertir coordenadas de pantalla a coordenadas del canvas)
+    const x = (clientX - rect.left) / zoom
+    const y = (clientY - rect.top) / zoom
+
+    return { x, y }
   }
 
   const startDrawing = (e: any) => {
@@ -162,11 +167,11 @@ export function Whiteboard({ roomId, role }: WhiteboardProps) {
 
     if (tool === 'highlighter') {
         ctx.globalAlpha = 0.3
-        ctx.lineWidth = 20
+        ctx.lineWidth = lineWidth * 2
         ctx.strokeStyle = color
     } else if (tool === 'eraser') {
         ctx.globalCompositeOperation = 'destination-out'
-        ctx.lineWidth = 20
+        ctx.lineWidth = lineWidth
     } else if (tool === 'laser') {
         ctx.strokeStyle = '#ff0000'
         ctx.lineWidth = 5
@@ -282,7 +287,7 @@ export function Whiteboard({ roomId, role }: WhiteboardProps) {
       if(!ctx) return
       const { points, tool: rTool, color: rColor, width: rWidth } = data
       ctx.beginPath()
-      ctx.lineWidth = rTool === 'highlighter' ? 20 : (rTool === 'eraser' ? 20 : rWidth)
+      ctx.lineWidth = rTool === 'highlighter' ? (rWidth || 20) * 2 : (rWidth || 2)
       ctx.strokeStyle = rColor
       ctx.globalAlpha = rTool === 'highlighter' ? 0.3 : 1
       ctx.globalCompositeOperation = rTool === 'eraser' ? 'destination-out' : 'source-over'
@@ -375,24 +380,43 @@ export function Whiteboard({ roomId, role }: WhiteboardProps) {
   const clearLocal = () => { if(ctx) { ctx.clearRect(0,0, ctx.canvas.width, ctx.canvas.height); saveHistory(ctx) }}
   const clearAll = async () => { clearLocal(); await supabase.channel(`room-${roomId}`).send({type:'broadcast', event:'clear', payload:{}}) }
 
+  // helpers de zoom
+  const handleZoomIn = () => setZoom(z => Math.min(3, parseFloat((z + 0.25).toFixed(2))))
+  const handleZoomOut = () => setZoom(z => Math.max(0.5, parseFloat((z - 0.25).toFixed(2))))
+
   // --- RENDER ---
   return (
     <div className="w-full h-full relative overflow-hidden bg-slate-100 flex flex-col">
        
        {/* 1. BARRA SUPERIOR */}
        <div className="h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4 z-50 shadow-sm">
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
                 <button onClick={undo} className="p-2 hover:bg-slate-100 rounded text-slate-600" title={t.undo}><Undo size={18}/></button>
                 <button onClick={redo} className="p-2 hover:bg-slate-100 rounded text-slate-600" title={t.redo}><Redo size={18}/></button>
                 <div className="w-px h-6 bg-slate-300 mx-2"></div>
                 <button onClick={clearAll} className="p-2 hover:bg-red-50 text-red-500 rounded flex gap-2 text-sm font-bold items-center"><Trash2 size={16}/> {t.clear}</button>
             </div>
             
-            <div className="flex bg-slate-100 rounded-lg p-1 gap-1">
-                <button onClick={()=>setBackground('white')} className={`p-1.5 rounded ${background==='white'?'bg-white shadow':''}`} title={t.bgWhite}><Square size={14}/></button>
-                <button onClick={()=>setBackground('grid')} className={`p-1.5 rounded ${background==='grid'?'bg-white shadow':''}`} title={t.bgGrid}><Grid size={14}/></button>
-                <button onClick={()=>setBackground('lines')} className={`p-1.5 rounded ${background==='lines'?'bg-white shadow':''}`} title={t.bgLines}><AlignJustify size={14}/></button>
-                <button onClick={()=>setBackground('dots')} className={`p-1.5 rounded ${background==='dots'?'bg-white shadow':''}`} title={t.bgDots}><Hash size={14}/></button>
+            <div className="flex items-center gap-3">
+              {/* CONTROLES DE ZOOM */}
+              <div className="flex items-center bg-slate-100 rounded-lg px-2 py-1 gap-1">
+                <button onClick={handleZoomOut} className="p-1.5 rounded hover:bg-slate-200" title="Zoom out">
+                  <ZoomOut size={16} />
+                </button>
+                <span className="text-xs font-semibold text-slate-600 w-12 text-center">
+                  {Math.round(zoom * 100)}%
+                </span>
+                <button onClick={handleZoomIn} className="p-1.5 rounded hover:bg-slate-200" title="Zoom in">
+                  <ZoomIn size={16} />
+                </button>
+              </div>
+
+              <div className="flex bg-slate-100 rounded-lg p-1 gap-1">
+                  <button onClick={()=>setBackground('white')} className={`p-1.5 rounded ${background==='white'?'bg-white shadow':''}`} title={t.bgWhite}><Square size={14}/></button>
+                  <button onClick={()=>setBackground('grid')} className={`p-1.5 rounded ${background==='grid'?'bg-white shadow':''}`} title={t.bgGrid}><Grid size={14}/></button>
+                  <button onClick={()=>setBackground('lines')} className={`p-1.5 rounded ${background==='lines'?'bg-white shadow':''}`} title={t.bgLines}><AlignJustify size={14}/></button>
+                  <button onClick={()=>setBackground('dots')} className={`p-1.5 rounded ${background==='dots'?'bg-white shadow':''}`} title={t.bgDots}><Hash size={14}/></button>
+              </div>
             </div>
        </div>
 
@@ -404,27 +428,91 @@ export function Whiteboard({ roomId, role }: WhiteboardProps) {
                 background === 'dots' ? 'bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] bg-[size:20px_20px]' : 'bg-white'
             }`}/>
 
-            <canvas
-                ref={canvasRef}
-                onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
-                onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
-                className="absolute inset-0 z-10 touch-none cursor-crosshair"
-            />
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                transform: `scale(${zoom})`,
+                transformOrigin: 'center center'
+              }}
+            >
+              <canvas
+                  ref={canvasRef}
+                  onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
+                  onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
+                  className="w-full h-full touch-none cursor-crosshair"
+              />
+            </div>
             
             {isTyping && (
-                <input autoFocus value={textInput} onChange={e=>setTextInput(e.target.value)} onBlur={handleTextComplete} onKeyDown={e=>e.key==='Enter'&&handleTextComplete()}
-                style={{position:'absolute', left:textPos.x, top:textPos.y-10, fontSize:`${lineWidth*5+12}px`, color, background:'transparent', border:'1px dashed blue', zIndex:50, outline:'none'}} placeholder={t.placeholder}/>
+                <input
+                  autoFocus
+                  value={textInput}
+                  onChange={e=>setTextInput(e.target.value)}
+                  onBlur={handleTextComplete}
+                  onKeyDown={e=>e.key==='Enter'&&handleTextComplete()}
+                  style={{
+                    position:'absolute',
+                    left:textPos.x * zoom,
+                    top:textPos.y * zoom - 10,
+                    fontSize:`${lineWidth*5+12}px`,
+                    color,
+                    background:'transparent',
+                    border:'1px dashed blue',
+                    zIndex:50,
+                    outline:'none'
+                  }}
+                  placeholder={t.placeholder}
+                />
             )}
        </div>
 
        {/* 3. BARRA LATERAL */}
-       <div className="absolute left-4 top-16 bg-white shadow-2xl border border-slate-200 rounded-xl p-2 flex flex-col gap-3 z-50 max-h-[80vh] overflow-y-auto w-16 items-center">
+       <div className="absolute left-4 top-16 bg-white shadow-2xl border border-slate-200 rounded-xl p-2 flex flex-col gap-3 z-50 max-h-[80vh] overflow-y-auto w-20 items-center">
             
             {/* BÁSICOS */}
             <div className="flex flex-col gap-1 w-full border-b pb-2">
                 <ToolBtn active={tool==='pen'} icon={<Pencil size={20}/>} onClick={()=>setTool('pen')} title={t.pen}/>
+                {/* botones de grosor para lápiz */}
+                <div className="flex justify-center gap-1 py-1">
+                  <button
+                    onClick={() => setLineWidth(2)}
+                    className={`w-2 h-2 rounded-full ${lineWidth===2 ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                    title="Línea delgada"
+                  />
+                  <button
+                    onClick={() => setLineWidth(6)}
+                    className={`w-2 h-2 rounded-full ${lineWidth===6 ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                    title="Línea media"
+                  />
+                  <button
+                    onClick={() => setLineWidth(12)}
+                    className={`w-2 h-2 rounded-full ${lineWidth===12 ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                    title="Línea gruesa"
+                  />
+                </div>
+
                 <ToolBtn active={tool==='highlighter'} icon={<Highlighter size={20}/>} onClick={()=>setTool('highlighter')} title={t.highlighter}/>
                 <ToolBtn active={tool==='eraser'} icon={<Eraser size={20}/>} onClick={()=>setTool('eraser')} title={t.eraser}/>
+                {/* botones de grosor para borrador (usa el mismo lineWidth) */}
+                <div className="flex justify-center gap-1 py-1">
+                  <button
+                    onClick={() => setLineWidth(4)}
+                    className={`w-2 h-2 rounded-full border ${lineWidth===4 ? 'bg-red-500 border-red-500' : 'bg-slate-100 border-slate-300'}`}
+                    title="Borrador delgado"
+                  />
+                  <button
+                    onClick={() => setLineWidth(10)}
+                    className={`w-2 h-2 rounded-full border ${lineWidth===10 ? 'bg-red-500 border-red-500' : 'bg-slate-100 border-slate-300'}`}
+                    title="Borrador medio"
+                  />
+                  <button
+                    onClick={() => setLineWidth(18)}
+                    className={`w-2 h-2 rounded-full border ${lineWidth===18 ? 'bg-red-500 border-red-500' : 'bg-slate-100 border-slate-300'}`}
+                    title="Borrador grueso"
+                  />
+                </div>
+
                 <ToolBtn active={tool==='text'} icon={<Type size={20}/>} onClick={()=>setTool('text')} title={t.text}/>
             </div>
 

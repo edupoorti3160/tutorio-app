@@ -4,15 +4,13 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { useWebRTC } from '@/hooks/useWebRTC' 
-import Whiteboard from '@/components/Whiteboard' 
+import { Whiteboard } from '@/components/whiteboard'
 import { Mic, MicOff, Video, VideoOff, Send, Languages, Loader2, X, Image as ImageIcon, CheckCircle, ZoomIn, ZoomOut, RotateCw, RotateCcw, Trash2, Volume2, ChevronDown } from 'lucide-react'
-
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 // TU API KEY DE GOOGLE (Pégala aquí si no usas .env)
 const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_TRANSLATE_API_KEY || 'PEGA_TU_API_KEY_AQUI';
-
 
 interface Message {
     sender: string;
@@ -20,14 +18,12 @@ interface Message {
     isTranslation?: boolean;
 }
 
-
 declare global {
     interface Window {
         SpeechRecognition: any;
         webkitSpeechRecognition: any;
     }
 }
-
 
 // --- CONFIGURACIÓN DE IDIOMAS ---
 const SUPPORTED_LANGUAGES = [
@@ -37,13 +33,11 @@ const SUPPORTED_LANGUAGES = [
     { code: 'pt', name: 'Portugués', flag: '🇧🇷', speechCode: 'pt-BR' }
 ];
 
-
 export default function Classroom() {
     const params = useParams()
     const router = useRouter()
     const roomId = params.roomid
     const [supabase] = useState(() => createClient())
-
 
     // --- ESTADOS ---
     const [userRole, setUserRole] = useState<'teacher' | 'student' | null>(null)
@@ -53,7 +47,6 @@ export default function Classroom() {
     const [hasJoined, setHasJoined] = useState(false)
     const [micOn, setMicOn] = useState(true)
     const [cameraOn, setCameraOn] = useState(true)
-
 
     // Chat
     const [messages, setMessages] = useState<Message[]>([])
@@ -72,7 +65,6 @@ export default function Classroom() {
     const [subtitle, setSubtitle] = useState('');
     const [interimSubtitle, setInterimSubtitle] = useState('');
 
-
     // Recursos
     const [showResources, setShowResources] = useState(false)
     const [resources, setResources] = useState<any[]>([])
@@ -84,11 +76,9 @@ export default function Classroom() {
     // --- NUEVO ESTADO PARA LA IMAGEN DE LA PIZARRA ---
     const [whiteboardImage, setWhiteboardImage] = useState<string | null>(null)
 
-
     // Cobro
     const [bookingDetails, setBookingDetails] = useState<any>(null)
     const [isFinishing, setIsFinishing] = useState(false)
-
 
     // Refs
     const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -96,7 +86,6 @@ export default function Classroom() {
     const lobbyStreamRef = useRef<MediaStream | null>(null) 
     const recognitionRef = useRef<any>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null)
-
 
     // WebRTC
     const isInitiator = userRole === 'teacher';
@@ -106,12 +95,10 @@ export default function Classroom() {
         isInitiator
     );
 
-
     const TEXTS = {
         teacher: { joinBtn: 'Iniciar Clase', labelRemote: 'Estudiante', labelLocal: 'Tú', placeholder: 'Escribe...', translateBtn: 'ACTIVAR VOZ', translatingBtn: 'ESCUCHANDO...', exit: 'SALIR', resourcesTitle: 'Biblioteca' },
         student: { joinBtn: 'Join Class', labelRemote: 'Tutor', labelLocal: 'You', placeholder: 'Type...', translateBtn: 'ACTIVATE VOICE', translatingBtn: 'LISTENING...', exit: 'LEAVE', resourcesTitle: 'Library' }
     }
-
 
     // --- 1. ROL Y DATOS ---
     useEffect(() => {
@@ -126,7 +113,6 @@ export default function Classroom() {
                     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
                     const role = (profile?.role || 'student') as 'teacher' | 'student';
                     setUserRole(role);
-
 
                     // Configurar idiomas por defecto según rol
                     if (role === 'teacher') {
@@ -143,8 +129,7 @@ export default function Classroom() {
         fetchUserRoleAndBooking()
     }, [supabase, router])
 
-
-    // --- 2. RECURSOS (CORREGIDO PARA USAR TABLA 'resources') ---
+    // --- 2. RECURSOS ---
     useEffect(() => {
         if (userRole === 'teacher' && userId) {
             const fetchResources = async () => {
@@ -155,9 +140,7 @@ export default function Classroom() {
         }
     }, [userRole, userId, supabase]);
 
-
     const t = userRole === 'teacher' ? TEXTS.teacher : TEXTS.student;
-
 
     // --- 3. VIDEO ---
     useEffect(() => {
@@ -177,7 +160,6 @@ export default function Classroom() {
         return () => { if (hasJoined && lobbyStreamRef.current) lobbyStreamRef.current.getTracks().forEach(t => t.stop()); }
     }, [hasJoined]);
 
-
     useEffect(() => {
         if (hasJoined && localStream && localVideoRef.current) {
             localVideoRef.current.srcObject = localStream;
@@ -186,14 +168,12 @@ export default function Classroom() {
         }
     }, [localStream, hasJoined]);
 
-
     useEffect(() => {
         if (remoteStream && remoteVideoRef.current) {
             remoteVideoRef.current.srcObject = remoteStream;
             remoteVideoRef.current.play().catch(e => console.log("Remote Autoplay:", e));
         }
     }, [remoteStream]);
-
 
     useEffect(() => {
         const activeStream = hasJoined ? localStream : lobbyStreamRef.current;
@@ -203,13 +183,10 @@ export default function Classroom() {
         }
     }, [micOn, cameraOn, localStream, hasJoined]);
 
-
-
     // =========================================================
     // 🧠 TRADUCTOR (GOOGLE API)
     // =========================================================
     
-    // Función Traducir
     const translateText = async (text: string, source: string, target: string) => {
         if (!text.trim() || source === target) return text;
         try {
@@ -220,9 +197,7 @@ export default function Classroom() {
                 body: JSON.stringify({ q: text, source: source, target: target, format: 'text' })
             });
 
-
             const data = await response.json();
-            
             if (data.error || !data.data) {
                 console.warn("Google API Error, fallback...", data);
                 const fbRes = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${source}|${target}`);
@@ -234,7 +209,6 @@ export default function Classroom() {
             return text; 
         }
     };
-
 
     // A. Escuchar voz del otro
     useEffect(() => {
@@ -250,7 +224,6 @@ export default function Classroom() {
         return () => { supabase.removeChannel(channel) }
     }, [roomId, hasJoined, sourceLang, userId]);
 
-
     // B. Text-to-Speech
     const playAudio = (text: string, lang: string) => {
         if (!window.speechSynthesis) return;
@@ -263,15 +236,12 @@ export default function Classroom() {
         window.speechSynthesis.speak(utterance);
     };
 
-
     // C. Speech-to-Text (Auto-Restart)
     const startRecognition = useCallback(() => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) return;
 
-
         if (recognitionRef.current) try { recognitionRef.current.stop(); } catch(e){}
-
 
         const recognition = new SpeechRecognition();
         recognition.continuous = true; 
@@ -299,7 +269,6 @@ export default function Classroom() {
                 if (!transcript.trim()) return;
                 setInterimSubtitle('Traduciendo...');
 
-
                 const translated = await translateText(transcript, sourceLang, targetLang);
                 
                 await supabase.channel(`room-voice-${roomId}`).send({
@@ -307,20 +276,16 @@ export default function Classroom() {
                     payload: { text: translated, sender: userId }
                 });
 
-
                 setSubtitle(`${t.labelLocal}: ${translated}`);
                 setInterimSubtitle('');
                 setTimeout(() => setSubtitle(''), 5000);
             }
         };
 
-
         recognitionRef.current = recognition;
         recognition.start();
 
-
     }, [sourceLang, targetLang, userId, roomId]);
-
 
     const toggleVoiceTranslator = () => {
         if (isVoiceActive) {
@@ -336,11 +301,9 @@ export default function Classroom() {
         }
     };
 
-
     useEffect(() => {
         if (isVoiceActive) startRecognition();
     }, [sourceLang, startRecognition]);
-
 
     // --- INTERFAZ ---
     const handleSendMessage = async (e: React.FormEvent) => {
@@ -350,7 +313,6 @@ export default function Classroom() {
         // 1. Mostrar mensaje
         setMessages(prev => [...prev, { sender: t.labelLocal, text: originalText }]);
         setMessageInput('');
-
 
         // 2. Traducir
         try {
@@ -364,7 +326,6 @@ export default function Classroom() {
             }
         } catch (e) { console.error(e); }
     }
-
 
     const handleFinishClass = async () => {
         if (!bookingDetails) return alert("No hay reserva activa.");
@@ -382,7 +343,6 @@ export default function Classroom() {
         finally { setIsFinishing(false); }
     }
 
-
     // --- FUNCIÓN CLAVE (PARA CONECTAR CON PIZARRA) ---
     const handleShareResource = (resource: any) => {
         // DETECCIÓN: Si es imagen, mándala a la pizarra
@@ -398,9 +358,7 @@ export default function Classroom() {
         setResourceScale(1); setResourceRotation(0); setResourcePosition({x:0, y:0});
     }
 
-
     if (isRoleLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-indigo-600 w-10 h-10" /></div>
-
 
     if (!hasJoined) {
         return (
@@ -420,7 +378,6 @@ export default function Classroom() {
             </div>
         )
     }
-
 
     return (
         <div className="h-screen bg-slate-100 flex flex-col font-sans overflow-hidden">
@@ -450,7 +407,6 @@ export default function Classroom() {
                         {isVoiceActive ? <Mic size={18} className="animate-pulse" /> : <MicOff size={18} />}
                     </button>
 
-
                     {/* SELECTOR DE IDIOMAS */}
                     <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border-2 border-slate-200 shadow-sm">
                         <Languages className="w-5 h-5 text-indigo-500 mr-1"/>
@@ -475,21 +431,18 @@ export default function Classroom() {
                 </div>
             </header>
 
-
             {/* AREA PRINCIPAL */}
             <div className="flex-1 flex overflow-hidden relative">
                 <div className="flex-1 bg-slate-100 relative flex flex-col items-center justify-center p-4">
                     <div className="w-full h-full border border-slate-300 rounded-2xl overflow-hidden shadow-lg bg-white relative">
-                          
-                          {/* WHITEBOARD con Prop de Imagen y userRole corregido */}
-                          <Whiteboard 
-                                roomId={roomId as string} 
-                                userRole={userRole || 'student'} 
-                                socket={null} 
-                                externalImage={whiteboardImage} 
-                          />
-                          
-                          {activeResource && (
+                        
+                        {/* WHITEBOARD con props correctas */}
+                        <Whiteboard
+                            roomId={roomId as string}
+                            role={(userRole || 'student') as 'teacher' | 'student'}
+                        />
+
+                        {activeResource && (
                             <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-0"
                                 style={{ transform: `translate(${resourcePosition.x}px, ${resourcePosition.y}px) scale(${resourceScale}) rotate(${resourceRotation}deg)`, transition: 'transform 0.1s linear', transformOrigin: 'center center' }}>
                                 {activeResource.file_format === 'IA-DOC' ? (
@@ -504,10 +457,9 @@ export default function Classroom() {
                                     <button onClick={() => { setActiveResource(null); setResourceScale(1); }} className="bg-white shadow-lg text-red-600 hover:bg-red-50 p-2 rounded-full border border-slate-200"><Trash2 size={20}/></button>
                                 </div>
                             </div>
-                          )}
+                        )}
                     </div>
                 </div>
-
 
                 {/* SIDEBAR DERECHA */}
                 <div className="w-[320px] bg-white border-l border-slate-200 flex flex-col shrink-0 shadow-xl z-30">
@@ -536,7 +488,6 @@ export default function Classroom() {
                     </div>
                 </div>
 
-
                 {/* MODAL RECURSOS */}
                 {showResources && userRole === 'teacher' && (
                     <div className="absolute left-0 top-0 bottom-0 w-64 bg-white border-r border-slate-200 shadow-2xl z-40 flex flex-col animate-in slide-in-from-left duration-200">
@@ -555,7 +506,6 @@ export default function Classroom() {
                 )}
             </div>
 
-
             {/* FOOTER */}
             <footer className="h-16 bg-white border-t border-slate-200 flex items-center px-6 shrink-0 z-40 relative shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                 <div className="flex gap-3 w-1/4">
@@ -567,14 +517,13 @@ export default function Classroom() {
                 <div className="flex-1 flex justify-center px-4 relative">
                    { (subtitle || interimSubtitle) && (
                       <div className="absolute bottom-2 bg-slate-900/95 text-white px-8 py-4 rounded-2xl text-sm font-medium shadow-2xl backdrop-blur-md max-w-2xl w-full text-center border border-slate-700/50 animate-in slide-in-from-bottom-4 duration-300 pointer-events-none z-50">
-                          <div className="flex flex-col gap-1">
-                             <span className="text-indigo-400 font-bold text-[10px] uppercase tracking-widest">{interimSubtitle ? 'ESCUCHANDO...' : 'TRADUCCIÓN'}</span>
-                             <span className="text-lg leading-snug">{subtitle || interimSubtitle}</span>
-                          </div>
+                         <div className="flex flex-col gap-1">
+                            <span className="text-indigo-400 font-bold text-[10px] uppercase tracking-widest">{interimSubtitle ? 'ESCUCHANDO...' : 'TRADUCCIÓN'}</span>
+                            <span className="text-lg leading-snug">{subtitle || interimSubtitle}</span>
+                         </div>
                       </div>
                    )}
                 </div>
-
 
                 <div className="flex gap-3 w-1/4 justify-end">
                     {userRole === 'teacher' && (
