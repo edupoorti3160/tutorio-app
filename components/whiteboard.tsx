@@ -16,11 +16,12 @@ import {
   Pointer,
   X,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
 } from 'lucide-react'
+import { createClient } from '@/utils/supabase/client'
 
-// Tipos
-interface Point { x: number; y: number }
+// Tipos para los trazos
+interface Point { x: number, y: number }
 
 type Tool = 'pen' | 'eraser' | 'move' | 'arrow' | 'laser'
 
@@ -29,7 +30,6 @@ interface DrawPath {
   color: string
   width: number
   tool: Tool
-  // Para arrow y laser (opcional)
   createdAt?: number
 }
 
@@ -37,11 +37,10 @@ interface WhiteboardProps {
   roomId: string
   userRole: 'teacher' | 'student'
   socket: any
-
-  // Imagen que viene desde la sala (biblioteca / pdf renderizado a imagen)
+  // Prop nueva opcional para recibir imagen externa desde la Sala
   externalImage?: string | null
 
-  // Controles PDF (opcional, para que los conectes a tu lógica externa)
+  // Controles PDF OPCIONALES (tú los conectas desde la página)
   pdfTotalPages?: number | null
   pdfCurrentPage?: number | null
   onPdfPrevPage?: () => void
@@ -58,79 +57,81 @@ export default function Whiteboard({
   pdfCurrentPage = null,
   onPdfPrevPage,
   onPdfNextPage,
-  onPdfClose
+  onPdfClose,
 }: WhiteboardProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-
-  // Herramientas
-  const [tool, setTool] = useState<Tool>('pen')
+  
+  // Estados de Herramientas
   const [color, setColor] = useState('#000000')
   const [lineWidth, setLineWidth] = useState(2)
-
-  // Zoom / Pan
+  const [tool, setTool] = useState<Tool>('pen')
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
-
-  // Estado de dibujo
+  
+  // Historial y Estado
   const [paths, setPaths] = useState<DrawPath[]>([])
   const [redoStack, setRedoStack] = useState<DrawPath[]>([])
   const [isDrawing, setIsDrawing] = useState(false)
-
-  // Imagen de fondo (imagen suelta o render del PDF)
+  
+  // Imagen de Fondo
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null)
 
-  // Path actual
+  // Referencias para evitar re-renders en loops de dibujo
   const currentPath = useRef<Point[]>([])
 
-  // TIMER para limpiar trazos tipo láser
-  const LASER_DURATION = 2000 // ms
+  const LASER_DURATION = 2000
+  const isPdfActive = pdfTotalPages && pdfTotalPages > 0 && pdfCurrentPage !== null
 
-  // 1) Cargar imagen externa (ej: página de PDF como imagen)
+  // Efecto para cargar imagen externa si llega (desde la biblioteca del maestro)
   useEffect(() => {
-    if (!externalImage) return
-    const img = new Image()
-    img.src = externalImage
-    img.crossOrigin = 'anonymous'
-    img.onload = () => {
-      setBackgroundImage(img)
-      if (canvasRef.current) {
-        redrawCanvas(paths, img)
+    if (externalImage) {
+      const img = new Image()
+      img.src = externalImage
+      img.crossOrigin = "Anonymous"
+      img.onload = () => {
+        setBackgroundImage(img)
+        if (canvasRef.current) {
+          redrawCanvas(paths, img)
+        }
       }
     }
   }, [externalImage])
 
-  // 2) Resize + sockets
+  // INICIALIZACIÓN DEL CANVAS Y SOCKETS
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
     const resizeCanvas = () => {
-      if (!containerRef.current || !canvas) return
-      canvas.width = containerRef.current.clientWidth
-      canvas.height = containerRef.current.clientHeight
-      redrawCanvas(paths, backgroundImage)
+      if (containerRef.current && canvas) {
+        canvas.width = containerRef.current.clientWidth
+        canvas.height = containerRef.current.clientHeight
+        redrawCanvas(paths, backgroundImage)
+      }
     }
-
+    
     window.addEventListener('resize', resizeCanvas)
     resizeCanvas()
 
+    // EVENTOS DE SOCKET (Recibir dibujos de otros)
     if (socket) {
-      // Recibir trazos de otros usuarios
-      socket.on('draw', (data: { path: DrawPath }) => {
-        const incomingPath = data.path
+      socket.on('draw-start', (data: any) => {
+        // cursor remoto opcional
+      })
 
+      socket.on('draw', (data: { path: DrawPath }) => {
+        const incoming = data.path
         setPaths(prev => {
-          const updated = [...prev, incomingPath]
-          redrawCanvas(updated, backgroundImage)
-          return updated
+          const newPaths = [...prev, incoming]
+          redrawCanvas(newPaths, backgroundImage)
+          return newPaths
         })
 
-        // Si el trazo es laser, lo limpiamos solo después de LASER_DURATION
-        if (incomingPath.tool === 'laser') {
+        if (incoming.tool === 'laser') {
           setTimeout(() => {
             setPaths(prev => {
-              const filtered = prev.filter(p => p !== incomingPath)
+              const filtered = prev.filter(p => p !== incoming)
               redrawCanvas(filtered, backgroundImage)
               return filtered
             })
@@ -138,18 +139,18 @@ export default function Whiteboard({
         }
       })
 
-      // Limpiar pizarra remota
       socket.on('clear-canvas', () => {
         setPaths([])
         setRedoStack([])
         const ctx = canvasRef.current?.getContext('2d')
-        if (ctx && canvasRef.current) {
-          ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
-          if (backgroundImage) redrawCanvas([], backgroundImage)
+        if(ctx && canvas) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height)
+          if(backgroundImage) {
+            redrawCanvas([], backgroundImage)
+          }
         }
       })
 
-      // Fondo remoto (imagen)
       socket.on('background-image', (imgUrl: string) => {
         const img = new Image()
         img.src = imgUrl
@@ -168,7 +169,7 @@ export default function Whiteboard({
     }
   }, [socket, backgroundImage, zoom, pan, paths])
 
-  // 3) Función central de dibujado
+  // FUNCIÓN PRINCIPAL DE DIBUJADO
   const redrawCanvas = (pathsToDraw: DrawPath[], bgImg: HTMLImageElement | null = backgroundImage) => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -178,14 +179,15 @@ export default function Whiteboard({
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
     ctx.save()
+    
     ctx.translate(pan.x, pan.y)
     ctx.scale(zoom, zoom)
 
-    // Fondo (imagen / pdf)
+    // FONDO
     if (bgImg) {
       const ratio = Math.min(canvas.width / bgImg.width, canvas.height / bgImg.height)
-      const w = bgImg.width * ratio * 0.9
-      const h = bgImg.height * ratio * 0.9
+      const w = bgImg.width * ratio * 0.8
+      const h = bgImg.height * ratio * 0.8
       const x = (canvas.width - w) / 2
       const y = (canvas.height - h) / 2
       ctx.drawImage(bgImg, x, y, w, h)
@@ -195,21 +197,14 @@ export default function Whiteboard({
     ctx.lineJoin = 'round'
 
     pathsToDraw.forEach(path => {
-      if (path.tool === 'laser') {
-        // El láser es solo visual y se eliminará con timeout
-        ctx.globalAlpha = 0.8
-      } else {
-        ctx.globalAlpha = 1
-      }
+      if (path.points.length < 1) return
 
-      if (path.points.length === 0) return
+      ctx.globalAlpha = path.tool === 'laser' ? 0.85 : 1
 
       if (path.tool === 'arrow') {
-        // Flecha: línea recta + punta
         const start = path.points[0]
         const end = path.points[path.points.length - 1]
 
-        // Línea principal
         ctx.beginPath()
         ctx.strokeStyle = path.color
         ctx.lineWidth = path.width
@@ -217,7 +212,6 @@ export default function Whiteboard({
         ctx.lineTo(end.x, end.y)
         ctx.stroke()
 
-        // Flecha: punta
         const headLength = 10 + path.width * 2
         const angle = Math.atan2(end.y - start.y, end.x - start.x)
         ctx.beginPath()
@@ -236,19 +230,20 @@ export default function Whiteboard({
         return
       }
 
-      // Pen / Eraser / Laser (de tipo trazo)
       ctx.beginPath()
       ctx.moveTo(path.points[0].x, path.points[0].y)
       path.points.forEach(p => ctx.lineTo(p.x, p.y))
 
       if (path.tool === 'eraser') {
-        // Efecto tipo "liquid paper"
+        ctx.globalCompositeOperation = 'source-over'
         ctx.strokeStyle = '#ffffff'
         ctx.lineWidth = path.width * 2
       } else if (path.tool === 'laser') {
+        ctx.globalCompositeOperation = 'source-over'
         ctx.strokeStyle = '#ef4444'
         ctx.lineWidth = path.width * 2
       } else {
+        ctx.globalCompositeOperation = 'source-over'
         ctx.strokeStyle = path.color
         ctx.lineWidth = path.width
       }
@@ -259,20 +254,20 @@ export default function Whiteboard({
     ctx.restore()
   }
 
-  // 4) Coordenadas transformadas
-  const getCoords = (e: any): Point => {
+  // MANEJO DEL MOUSE / TOUCH
+  const getCoords = (e: any) => {
     const canvas = canvasRef.current
     if (!canvas) return { x: 0, y: 0 }
     const rect = canvas.getBoundingClientRect()
     const clientX = e.touches ? e.touches[0].clientX : e.clientX
     const clientY = e.touches ? e.touches[0].clientY : e.clientY
+    
     return {
       x: (clientX - rect.left - pan.x) / zoom,
       y: (clientY - rect.top - pan.y) / zoom
     }
   }
 
-  // 5) Eventos de dibujo
   const startDrawing = (e: any) => {
     if (tool === 'move') return
     setIsDrawing(true)
@@ -281,7 +276,6 @@ export default function Whiteboard({
   }
 
   const draw = (e: any) => {
-    // Mover lienzo
     if (tool === 'move' && e.buttons === 1) {
       const movementX = e.movementX || 0
       const movementY = e.movementY || 0
@@ -296,112 +290,106 @@ export default function Whiteboard({
     const coords = getCoords(e)
     currentPath.current.push(coords)
 
-    // Dibujado rápido (optimista)
     const canvas = canvasRef.current
     const ctx = canvas?.getContext('2d')
-    if (!canvas || !ctx) return
+    if (ctx && canvas) {
+      ctx.save()
+      ctx.translate(pan.x, pan.y)
+      ctx.scale(zoom, zoom)
+      
+      if (tool === 'arrow') {
+        redrawCanvas(paths, backgroundImage)
+        const start = currentPath.current[0]
+        const end = coords
 
-    ctx.save()
-    ctx.translate(pan.x, pan.y)
-    ctx.scale(zoom, zoom)
-
-    if (tool === 'arrow') {
-      // Para flecha, redibujar desde el principio de la flecha a la posición actual
-      redrawCanvas(paths, backgroundImage)
-      const start = currentPath.current[0]
-      const end = coords
-
-      ctx.beginPath()
-      ctx.strokeStyle = color
-      ctx.lineWidth = lineWidth
-      ctx.moveTo(start.x, start.y)
-      ctx.lineTo(end.x, end.y)
-      ctx.stroke()
-
-      const headLength = 10 + lineWidth * 2
-      const angle = Math.atan2(end.y - start.y, end.x - start.x)
-      ctx.beginPath()
-      ctx.moveTo(end.x, end.y)
-      ctx.lineTo(
-        end.x - headLength * Math.cos(angle - Math.PI / 6),
-        end.y - headLength * Math.sin(angle - Math.PI / 6)
-      )
-      ctx.lineTo(
-        end.x - headLength * Math.cos(angle + Math.PI / 6),
-        end.y - headLength * Math.sin(angle + Math.PI / 6)
-      )
-      ctx.lineTo(end.x, end.y)
-      ctx.fillStyle = color
-      ctx.fill()
-    } else {
-      ctx.beginPath()
-      const prev = currentPath.current[currentPath.current.length - 2]
-      ctx.moveTo(prev.x, prev.y)
-      ctx.lineTo(coords.x, coords.y)
-
-      if (tool === 'eraser') {
-        ctx.strokeStyle = '#ffffff'
-        ctx.lineWidth = lineWidth * 2
-      } else if (tool === 'laser') {
-        ctx.strokeStyle = '#ef4444'
-        ctx.lineWidth = lineWidth * 2
-      } else {
+        ctx.beginPath()
         ctx.strokeStyle = color
         ctx.lineWidth = lineWidth
+        ctx.moveTo(start.x, start.y)
+        ctx.lineTo(end.x, end.y)
+        ctx.stroke()
+
+        const headLength = 10 + lineWidth * 2
+        const angle = Math.atan2(end.y - start.y, end.x - start.x)
+        ctx.beginPath()
+        ctx.moveTo(end.x, end.y)
+        ctx.lineTo(
+          end.x - headLength * Math.cos(angle - Math.PI / 6),
+          end.y - headLength * Math.sin(angle - Math.PI / 6)
+        )
+        ctx.lineTo(
+          end.x - headLength * Math.cos(angle + Math.PI / 6),
+          end.y - headLength * Math.sin(angle + Math.PI / 6)
+        )
+        ctx.lineTo(end.x, end.y)
+        ctx.fillStyle = color
+        ctx.fill()
+      } else {
+        ctx.beginPath()
+        const prev = currentPath.current[currentPath.current.length - 2]
+        ctx.moveTo(prev.x, prev.y)
+        ctx.lineTo(coords.x, coords.y)
+        
+        if (tool === 'eraser') {
+          ctx.strokeStyle = '#ffffff'
+          ctx.lineWidth = lineWidth * 2
+        } else if (tool === 'laser') {
+          ctx.strokeStyle = '#ef4444'
+          ctx.lineWidth = lineWidth * 2
+        } else {
+          ctx.strokeStyle = color
+          ctx.lineWidth = lineWidth
+        }
+        ctx.lineCap = 'round'
+        ctx.stroke()
       }
-
-      ctx.lineCap = 'round'
-      ctx.stroke()
+      
+      ctx.restore()
     }
-
-    ctx.restore()
   }
 
   const stopDrawing = () => {
     if (!isDrawing || tool === 'move') return
     setIsDrawing(false)
 
-    if (currentPath.current.length === 0) return
+    if (currentPath.current.length > 0) {
+      const newPath: DrawPath = {
+        points: currentPath.current,
+        color: color,
+        width: lineWidth,
+        tool: tool,
+        createdAt: Date.now(),
+      }
+      
+      const newPaths = [...paths, newPath]
+      setPaths(newPaths)
+      setRedoStack([])
 
-    const path: DrawPath = {
-      points: [...currentPath.current],
-      color,
-      width: lineWidth,
-      tool,
-      createdAt: Date.now()
+      if (socket) {
+        socket.emit('draw', { roomId, path: newPath })
+      }
+      
+      redrawCanvas(newPaths, backgroundImage)
+
+      if (tool === 'laser') {
+        setTimeout(() => {
+          setPaths(prev => {
+            const filtered = prev.filter(p => p !== newPath)
+            redrawCanvas(filtered, backgroundImage)
+            return filtered
+          })
+        }, LASER_DURATION)
+      }
     }
-
-    const newPaths = [...paths, path]
-    setPaths(newPaths)
-    setRedoStack([])
-
-    if (socket) {
-      socket.emit('draw', { roomId, path })
-    }
-
-    redrawCanvas(newPaths, backgroundImage)
-
-    // Si es laser, eliminarlo después de un tiempo
-    if (tool === 'laser') {
-      setTimeout(() => {
-        setPaths(prev => {
-          const filtered = prev.filter(p => p !== path)
-          redrawCanvas(filtered, backgroundImage)
-          return filtered
-        })
-      }, LASER_DURATION)
-    }
-
     currentPath.current = []
   }
 
-  // 6) Acciones de barra
   const clearBoard = () => {
-    if (!confirm('¿Borrar toda la pizarra?')) return
+    if(!confirm("¿Borrar toda la pizarra?")) return
     setPaths([])
     setRedoStack([])
-    redrawCanvas([], backgroundImage)
     if (socket) socket.emit('clear-canvas', { roomId })
+    redrawCanvas([], backgroundImage)
   }
 
   const undo = () => {
@@ -424,17 +412,17 @@ export default function Whiteboard({
   }
 
   const handleImageUpload = (e: any) => {
-    const file = e.target.files?.[0]
+    const file = e.target.files[0]
     if (!file) return
-
+    
     const reader = new FileReader()
-    reader.onload = evt => {
+    reader.onload = (evt) => {
       const img = new Image()
       img.src = evt.target?.result as string
       img.onload = () => {
         setBackgroundImage(img)
         redrawCanvas(paths, img)
-        if (socket) {
+        if(socket) {
           socket.emit('background-image', { roomId, imgUrl: img.src })
         }
       }
@@ -451,25 +439,18 @@ export default function Whiteboard({
     link.click()
   }
 
-  const handleZoomChange = (delta: number) => {
+  const handleZoom = (delta: number) => {
     setZoom(prev => {
       const next = Math.max(0.5, Math.min(3, prev + delta))
       return next
     })
-    // Redibujo pequeño delay
-    setTimeout(() => {
-      redrawCanvas(paths, backgroundImage)
-    }, 10)
+    setTimeout(() => redrawCanvas(paths, backgroundImage), 10)
   }
 
-  const isPdfActive = pdfTotalPages && pdfTotalPages > 0 && pdfCurrentPage !== null
-
   return (
-    <div
-      ref={containerRef}
-      className="relative w-full h-full bg-white rounded-xl shadow-inner overflow-hidden border border-slate-200"
-    >
-      {/* Barra PDF arriba (solo si hay PDF activo) */}
+    <div className="relative w-full h-full bg-white rounded-xl shadow-inner overflow-hidden border border-slate-200" ref={containerRef}>
+      
+      {/* Barra PDF superior */}
       {isPdfActive && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 bg-white/95 border border-slate-200 shadow-md rounded-full px-3 py-1 flex items-center gap-3">
           <button
@@ -501,16 +482,14 @@ export default function Whiteboard({
         </div>
       )}
 
-      {/* Indicador de zoom */}
+      {/* Indicador Zoom */}
       <div className="absolute top-2 right-2 bg-black/50 text-white text-[10px] px-2 py-1 rounded-full pointer-events-none z-10">
         {Math.round(zoom * 100)}%
       </div>
-
+      
       <canvas
         ref={canvasRef}
-        className={`w-full h-full touch-none ${
-          tool === 'move' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'
-        }`}
+        className={`w-full h-full touch-none ${tool === 'move' ? 'cursor-grab' : 'cursor-crosshair'}`}
         onMouseDown={startDrawing}
         onMouseMove={draw}
         onMouseUp={stopDrawing}
@@ -520,22 +499,16 @@ export default function Whiteboard({
         onTouchEnd={stopDrawing}
       />
 
-      {/* Barra de herramientas abajo */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur shadow-2xl rounded-2xl p-2 flex items-center gap-2 border border-slate-200 z-20">
+      {/* BARRA DE HERRAMIENTAS FLOTANTE */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur shadow-lg rounded-2xl p-2 flex items-center gap-2 border border-slate-200">
+        
         {/* Colores */}
-        <div className="flex gap-1 pr-2 border-r border-slate-200 items-center">
+        <div className="flex gap-1 pr-2 border-r border-slate-200">
           {['#000000', '#ef4444', '#22c55e', '#3b82f6', '#eab308'].map(c => (
-            <button
+            <button 
               key={c}
-              onClick={() => {
-                setColor(c)
-                if (tool === 'eraser' || tool === 'move') setTool('pen')
-              }}
-              className={`w-5 h-5 rounded-full border border-slate-300 transition-transform ${
-                color === c && tool !== 'eraser' && tool !== 'move'
-                  ? 'ring-2 ring-indigo-500 scale-110'
-                  : 'hover:scale-105'
-              }`}
+              onClick={() => { setColor(c); if (tool === 'eraser' || tool === 'move') setTool('pen') }}
+              className={`w-6 h-6 rounded-full border-2 transition-transform ${color === c && tool === 'pen' ? 'border-slate-800 scale-110' : 'border-transparent hover:scale-105'}`}
               style={{ backgroundColor: c }}
             />
           ))}
@@ -543,142 +516,92 @@ export default function Whiteboard({
 
         {/* Grosor */}
         <div className="flex items-center gap-1 pr-2 border-r border-slate-200">
-          <button
-            onClick={() => setLineWidth(2)}
-            className={`p-1.5 rounded hover:bg-slate-100 ${lineWidth === 2 ? 'bg-slate-200' : ''}`}
-          >
+          <button onClick={() => setLineWidth(2)} className={`p-1.5 rounded ${lineWidth === 2 ? 'bg-slate-200' : 'hover:bg-slate-100'}`}>
             <div className="w-1 h-1 bg-black rounded-full" />
           </button>
-          <button
-            onClick={() => setLineWidth(4)}
-            className={`p-1.5 rounded hover:bg-slate-100 ${lineWidth === 4 ? 'bg-slate-200' : ''}`}
-          >
+          <button onClick={() => setLineWidth(4)} className={`p-1.5 rounded ${lineWidth === 4 ? 'bg-slate-200' : 'hover:bg-slate-100'}`}>
             <div className="w-2 h-2 bg-black rounded-full" />
           </button>
-          <button
-            onClick={() => setLineWidth(8)}
-            className={`p-1.5 rounded hover:bg-slate-100 ${lineWidth === 8 ? 'bg-slate-200' : ''}`}
-          >
+          <button onClick={() => setLineWidth(8)} className={`p-1.5 rounded ${lineWidth === 8 ? 'bg-slate-200' : 'hover:bg-slate-100'}`}>
             <div className="w-3 h-3 bg-black rounded-full" />
           </button>
         </div>
 
-        {/* Herramientas principales */}
+        {/* Herramientas Principales */}
         <div className="flex gap-1">
-          <button
-            onClick={() => setTool('pen')}
-            className={`p-2 rounded-lg ${
-              tool === 'pen' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-slate-100 text-slate-600'
-            }`}
+          <button 
+            onClick={() => setTool('pen')} 
+            className={`p-2 rounded-lg ${tool === 'pen' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-slate-100'}`}
             title="Lápiz"
           >
             <Pen size={18} />
           </button>
-
-          <button
-            onClick={() => setTool('eraser')}
-            className={`p-2 rounded-lg ${
-              tool === 'eraser' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-slate-100 text-slate-600'
-            }`}
+          <button 
+            onClick={() => setTool('eraser')} 
+            className={`p-2 rounded-lg ${tool === 'eraser' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-slate-100'}`}
             title="Borrador"
           >
             <Eraser size={18} />
           </button>
-
-          <button
-            onClick={() => setTool('arrow')}
-            className={`p-2 rounded-lg ${
-              tool === 'arrow' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-slate-100 text-slate-600'
-            }`}
+          <button 
+            onClick={() => setTool('arrow')} 
+            className={`p-2 rounded-lg ${tool === 'arrow' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-slate-100'}`}
             title="Flecha"
           >
             <ArrowRight size={18} />
           </button>
-
-          <button
-            onClick={() => setTool('laser')}
-            className={`p-2 rounded-lg ${
-              tool === 'laser' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-slate-100 text-slate-600'
-            }`}
+          <button 
+            onClick={() => setTool('laser')} 
+            className={`p-2 rounded-lg ${tool === 'laser' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-slate-100'}`}
             title="Puntero láser"
           >
             <Pointer size={18} />
           </button>
-
-          <button
-            onClick={() => setTool('move')}
-            className={`p-2 rounded-lg ${
-              tool === 'move' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-slate-100 text-slate-600'
-            }`}
-            title="Mover lienzo"
+          <button 
+            onClick={() => setTool('move')} 
+            className={`p-2 rounded-lg ${tool === 'move' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-slate-100'}`}
+            title="Mover/Pan"
           >
             <Move size={18} />
           </button>
         </div>
 
-        <div className="w-px h-6 bg-slate-200 mx-1" />
+        <div className="w-px h-6 bg-slate-200 mx-1"></div>
 
         {/* Zoom */}
         <div className="flex gap-1">
-          <button
-            onClick={() => handleZoomChange(-0.2)}
-            className="p-2 hover:bg-slate-100 rounded-lg text-slate-600"
-            title="Alejar"
-          >
+          <button onClick={() => handleZoom(-0.2)} className="p-2 hover:bg-slate-100 rounded-lg" title="Alejar">
             <ZoomOut size={18} />
           </button>
-          <button
-            onClick={() => handleZoomChange(0.2)}
-            className="p-2 hover:bg-slate-100 rounded-lg text-slate-600"
-            title="Acercar"
-          >
+          <button onClick={() => handleZoom(0.2)} className="p-2 hover:bg-slate-100 rounded-lg" title="Acercar">
             <ZoomIn size={18} />
           </button>
         </div>
 
-        <div className="w-px h-6 bg-slate-200 mx-1" />
+        <div className="w-px h-6 bg-slate-200 mx-1"></div>
 
         {/* Acciones */}
         <div className="flex gap-1">
-          <button
-            onClick={undo}
-            disabled={paths.length === 0}
-            className="p-2 hover:bg-slate-100 rounded-lg disabled:opacity-30 text-slate-600"
-            title="Deshacer"
-          >
-            <Undo size={18} />
+          <button onClick={undo} className="p-2 hover:bg-slate-100 rounded-lg disabled:opacity-30" disabled={paths.length === 0} title="Deshacer">
+            <Undo size={18}/>
           </button>
-          <button
-            onClick={redo}
-            disabled={redoStack.length === 0}
-            className="p-2 hover:bg-slate-100 rounded-lg disabled:opacity-30 text-slate-600"
-            title="Rehacer"
-          >
-            <Redo size={18} />
+          <button onClick={redo} className="p-2 hover:bg-slate-100 rounded-lg disabled:opacity-30" disabled={redoStack.length === 0} title="Rehacer">
+            <Redo size={18}/>
           </button>
-          <button
-            onClick={handleDownload}
-            className="p-2 hover:bg-slate-100 rounded-lg text-slate-600"
-            title="Descargar"
-          >
+          <button onClick={clearBoard} className="p-2 hover:bg-red-50 text-red-500 rounded-lg" title="Limpiar Todo">
+            <Trash2 size={18}/>
+          </button>
+          <button onClick={handleDownload} className="p-2 hover:bg-slate-100 rounded-lg" title="Descargar">
             <Download size={18} />
-          </button>
-          <button
-            onClick={clearBoard}
-            className="p-2 hover:bg-red-50 text-red-500 rounded-lg"
-            title="Limpiar todo"
-          >
-            <Trash2 size={18} />
           </button>
         </div>
 
-        {/* Subir imagen */}
-        <label
-          className="p-2 hover:bg-slate-100 rounded-lg cursor-pointer text-indigo-600 ml-1"
-          title="Subir imagen"
-        >
-          <ImageIcon size={18} />
-          <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
+        <div className="w-px h-6 bg-slate-200 mx-1"></div>
+
+        {/* Imagen Local (Input oculto) */}
+        <label className="p-2 hover:bg-slate-100 rounded-lg cursor-pointer text-slate-600" title="Subir Fondo">
+          <ImageIcon size={18}/>
+          <input type="file" hidden accept="image/*" onChange={handleImageUpload}/>
         </label>
       </div>
     </div>
