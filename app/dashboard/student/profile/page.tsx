@@ -12,7 +12,7 @@ export default function ProfilePage() {
     
     // --- RASTREADOR DE CÓDIGO ---
     useEffect(() => {
-        console.log("✅ CÓDIGO NUEVO CARGADO - USANDO RPC BYPASS")
+        console.log("✅ CÓDIGO NUEVO CARGADO - USANDO RPC DINÁMICO (JSON)")
     }, [])
     // -----------------------------
 
@@ -107,7 +107,7 @@ export default function ProfilePage() {
         }
     }
 
-    // 3. GUARDAR DATOS (Usando la "Puerta Trasera" RPC)
+    // 3. GUARDAR DATOS (Usando la nueva función "update_profile_dynamic")
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setLoading(true)
@@ -116,19 +116,23 @@ export default function ProfilePage() {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) throw new Error('No user')
 
-            // LLAMADA A LA FUNCIÓN SQL SEGURA
-            // Esta función ignora los triggers y permisos rotos
-            const { error } = await supabase.rpc('update_profile_bypassing_triggers', {
-                p_id: user.id,
-                p_first_name: formData.firstName,
-                p_last_name: formData.lastName,
-                p_age: formData.age ? parseInt(formData.age) : null,
-                p_education_level: formData.educationLevel,
-                p_native_language: formData.nativeLanguage,
-                p_bio: formData.bio,
-                p_location: formData.location,
-                p_avatar_url: formData.avatarUrl
-            })
+            // Preparamos el paquete de datos JSON
+            const payload = {
+                id: user.id,
+                email: user.email,
+                first_name: formData.firstName,
+                last_name: formData.lastName,
+                age: formData.age, // Se envía como string, SQL lo convierte
+                education_level: formData.educationLevel,
+                native_language: formData.nativeLanguage,
+                bio: formData.bio,
+                location: formData.location,
+                avatar_url: formData.avatarUrl
+            }
+
+            // LLAMADA A LA FUNCIÓN UNIVERSAL
+            // Enviamos todo en un solo argumento llamado 'payload'
+            const { error } = await supabase.rpc('update_profile_dynamic', { payload })
             
             if (error) throw error
 
