@@ -13,7 +13,7 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true)
   const [calling, setCalling] = useState(false)
 
-  // NEW: track current request id (lo seguimos guardando por logs, pero ya no se usa en el if)
+  // track current request id (lo seguimos guardando por logs, pero ya no se usa en el if)
   const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
   
   const [studentName, setStudentName] = useState("Student")
@@ -41,13 +41,15 @@ export default function StudentDashboard() {
         }
         setUserEmail(user.email || "")
 
-        // Obtener/Crear Perfil
-        let { data: profile } = await supabase
+        // Obtener/Crear Perfil - CORREGIDO: Usamos .limit(1) para evitar error 406
+        let { data: profileData } = await supabase
           .from('profiles')
           .select('first_name, last_name')
           .eq('id', user.id)
-          .single()
+          .limit(1)
         
+        let profile = profileData?.[0]
+
         if (!profile) {
           const { data: newProfile } = await supabase.from('profiles').insert({
             id: user.id,
@@ -62,12 +64,14 @@ export default function StudentDashboard() {
 
         if (profile) setStudentName(`${profile.first_name}`)
 
-        // Obtener/Crear Billetera
-        let { data: wallet } = await supabase
+        // Obtener/Crear Billetera - CORREGIDO: Usamos .limit(1) para evitar error 406
+        let { data: walletData } = await supabase
           .from('wallets')
           .select('balance')
           .eq('user_id', user.id)
-          .single()
+          .limit(1)
+        
+        let wallet = walletData?.[0]
         
         if (!wallet) {
           const { data: newWallet } = await supabase.from('wallets').insert({
@@ -79,10 +83,10 @@ export default function StudentDashboard() {
         
         if (wallet) setBalance(wallet.balance)
 
-        // Obtener Clases
+        // Obtener Clases - CORREGIDO: Usamos .limit(1) para evitar error 406
         const today = new Date().toISOString().split('T')[0]
         
-        const { data: upcoming } = await supabase
+        const { data: upcomingData } = await supabase
           .from('bookings')
           .select('date, time, topic, meeting_link')
           .eq('student_id', user.id)
@@ -90,9 +94,8 @@ export default function StudentDashboard() {
           .order('date', { ascending: true })
           .order('time', { ascending: true })
           .limit(1)
-          .single()
 
-        if (upcoming) setNextClass(upcoming)
+        if (upcomingData && upcomingData.length > 0) setNextClass(upcomingData[0])
 
         const { count } = await supabase
           .from('bookings')
@@ -121,7 +124,7 @@ export default function StudentDashboard() {
       const channel = supabase.channel('student-dashboard-realtime')
 
       channel
-        // A) Escuchar cuando un profesor cambia el estado de la llamada instantánea
+        // A) Cualquier UPDATE de class_requests de este estudiante
         .on(
           'postgres_changes',
           {
@@ -131,13 +134,12 @@ export default function StudentDashboard() {
             filter: `student_id=eq.${user.id}`
           },
           (payload) => {
-            console.log('STUDENT UPDATE payload', payload, 'currentRequestId:', currentRequestId)
+            console.log('STUDENT UPDATE payload', payload)
 
-            // CORRECCIÓN: Quitamos la dependencia de payload.old.status para evitar bloqueos si el historial no carga
+            // CORRECCIÓN SINCRONIZACIÓN: Solo dependemos del nuevo estado 'accepted'
             if (payload.new.status === 'accepted') {
               const roomLink = payload.new.room_id
               
-              // Notificación en inglés
               setNotifications(prev => [{
                 id: Date.now(),
                 title: 'Tutor connected',
@@ -150,18 +152,17 @@ export default function StudentDashboard() {
               setIsNotificationsOpen(true)
               setCalling(false)
 
-              // Entramos automáticamente a la sala
               if (roomLink) {
+                // Redirección inmediata con autoJoin para sincronizar con el aula
                 router.push(`/room/${roomLink}?autoJoin=1`)
               }
 
-              // Opcional: sonido
               const audio = new Audio('/notification.mp3') 
               audio.play().catch(() => {}) 
             }
           }
         )
-        // B) Escuchar nuevas reservas confirmadas
+        // B) Nuevas reservas confirmadas
         .on(
           'postgres_changes',
           {
@@ -171,7 +172,7 @@ export default function StudentDashboard() {
             filter: `student_id=eq.${user.id}`
           },
           (payload) => {
-            if (payload.new.status === 'accepted') {
+            if (payload.new.status === 'confirmed') {
               setNotifications(prev => [{
                 id: Date.now(),
                 title: 'New class confirmed',
@@ -204,7 +205,7 @@ export default function StudentDashboard() {
     if (nextClass && nextClass.meeting_link) {
       router.push(`/room/${nextClass.meeting_link}`)
     } else {
-      router.push('/room/demo-class?lang=en') 
+      router.push('/room/demo-class?lang=en')
     }
   }
 
@@ -224,7 +225,6 @@ export default function StudentDashboard() {
       
       const targetTeacher = teachers[0]
 
-      // Usamos un ID de sala único
       const uniqueRoomId = `instant-${user.id}-${Date.now().toString().slice(-4)}`
 
       const { data: inserted, error } = await supabase.from('class_requests').insert({
@@ -234,17 +234,15 @@ export default function StudentDashboard() {
         topic: "Instant Help",
         level: "General",
         room_id: uniqueRoomId,
-        status: 'waiting' // Importante para el trigger
+        status: 'waiting'
       }).select().single()
 
       if (error) throw error
 
       console.log('STUDENT created request', inserted)
 
-      // Guardamos el id de ESTA solicitud (solo para debug)
       setCurrentRequestId(inserted.id)
 
-      // Feedback visual inmediato (en inglés)
       setNotifications(prev => [{
         id: Date.now(),
         title: 'Request sent',
@@ -263,22 +261,17 @@ export default function StudentDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans text-slate-900">
-      
-      {/* --- SIDEBAR --- */}
       <aside className="w-64 bg-white border-r border-slate-200 hidden md:flex flex-col fixed h-full z-10">
         <div className="p-6 border-b border-slate-100">
           <span className="text-2xl font-bold text-indigo-600">Tutorio</span>
         </div>
-        
         <nav className="flex-1 p-4 space-y-2">
           <Link href="/dashboard/student/schedule" className="w-full flex items-center gap-3 px-4 py-3 bg-indigo-50 text-indigo-700 rounded-xl font-medium text-left">
             <BookOpen className="w-5 h-5" /> My Classes
           </Link>
-          
           <Link href="/dashboard/student/schedule" className="w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-indigo-600 rounded-xl font-medium text-left transition-colors">
             <Calendar className="w-5 h-5" /> My Schedule
           </Link>
-
           <Link href="/dashboard/student/find-tutors" className="w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-indigo-600 rounded-xl font-medium text-left transition-colors">
             <Search className="w-5 h-5" /> Find Tutors
           </Link>
@@ -292,7 +285,6 @@ export default function StudentDashboard() {
             <User className="w-5 h-5" /> My Profile
           </Link>
         </nav>
-
         <div className="p-4 border-t border-slate-100">
           <button onClick={handleLogout} className="flex items-center gap-3 px-4 py-3 w-full text-left text-red-600 hover:bg-red-50 rounded-xl font-medium transition-colors">
             <LogOut className="w-5 h-5" /> Log Out
@@ -300,10 +292,7 @@ export default function StudentDashboard() {
         </div>
       </aside>
 
-      {/* --- MAIN CONTENT --- */}
       <main className="flex-1 md:ml-64 p-8">
-        
-        {/* HEADER */}
         <header className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Hello, {studentName}</h1>
@@ -320,7 +309,6 @@ export default function StudentDashboard() {
           </div>
         </header>
 
-        {/* --- STATS CARDS --- */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4 transition-transform hover:-translate-y-1">
             <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Video className="w-6 h-6" /></div>
@@ -337,7 +325,7 @@ export default function StudentDashboard() {
             </div>
           </div>
           <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden flex flex-col justify-center">
-            <div className="relative z-10 flex items-center justify_between">
+            <div className="relative z-10 flex items-center justify-between">
               <div>
                 <p className="font-bold text-lg leading-tight">Need Help Now?</p>
                 <p className="text-xs text-indigo-200 mt-1">Talk to a teacher instantly.</p>
@@ -356,10 +344,9 @@ export default function StudentDashboard() {
           </div>
         </div>
 
-        {/* --- MAIN SECTION: CLASSROOM --- */}
         <section className="mb-10">
           <h2 className="text-lg font-bold text-slate-900 mb-4">Your Virtual Classroom</h2>
-          <div className="bg-white rounded-2xl p-8 border border-slate-200 border-dashed text-center flex flex-col items_center justify-center gap-4">
+          <div className="bg-white rounded-2xl p-8 border border-slate-200 border-dashed text-center flex flex-col items-center justify-center gap-4">
             <div className="p-4 bg-slate-50 rounded-full">
               <Video className="w-8 h-8 text-slate-400" />
             </div>
@@ -374,7 +361,7 @@ export default function StudentDashboard() {
               ) : (
                 <>
                   <h3 className="text-lg font-medium text-slate-900">No classes scheduled right now</h3>
-                  <p className="text-slate-500 max-w-sm mx_auto">
+                  <p className="text-slate-500 max-w-sm mx-auto">
                     Book a class or use the "Instant Help" button above.
                   </p>
                 </>
@@ -393,18 +380,16 @@ export default function StudentDashboard() {
             </button>
           </div>
         </section>
-
       </main>
 
-      {/* --- NOTIFICATIONS MODAL --- */}
       {isNotificationsOpen && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div
             className="absolute inset-0 bg-black/20 backdrop-blur-sm"
             onClick={() => setIsNotificationsOpen(false)}
           ></div>
-          <div className="relative w_full max-w-sm h-full bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-            <div className="p-5 border-b border-slate-200 flex justify_between items-center bg-slate-50">
+          <div className="relative w-full max-w-sm h-full bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+            <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
               <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                 <Bell className="w-5 h-5 text-indigo-600" /> Notifications
               </h2>
@@ -433,13 +418,7 @@ export default function StudentDashboard() {
                     }`}
                   >
                     <div className="flex justify-between items-start mb-1">
-                      <p
-                        className={`text-sm font-bold ${
-                          notif.type === "urgent"
-                            ? "text-green-800"
-                            : "text-slate-800"
-                        }`}
-                      >
+                      <p className={`text-sm font-bold ${notif.type === "urgent" ? "text-green-800" : "text-slate-800"}`}>
                         {notif.title}
                       </p>
                       {notif.type === "urgent" && (

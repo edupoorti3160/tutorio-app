@@ -41,7 +41,7 @@ export default function TeacherDashboard() {
   const [showResourceModal, setShowResourceModal] = useState(false)
   const [resources, setResources] = useState<any[]>([])
   const [uploadingResource, setUploadingResource] = useState(false)
-  const resourceInputRef = useRef<HTMLInputElement>(null) // CORREGIDO: Añadido 'const'
+  const resourceInputRef = useRef<HTMLInputElement>(null) 
 
   // LOGOUT
   const handleLogout = async () => {
@@ -209,7 +209,7 @@ export default function TeacherDashboard() {
   // --- FUNCIONES PAGOS ---
   const handleRequestPayout = async () => {
     if(!payoutAddress) return alert("Ingresa una cuenta")
-    setPayoutLoading(true) // CORREGIDO: Uso de setter en lugar de asignación directa
+    setPayoutLoading(true) // CAMBIO: Usar setter en lugar de asignación directa
     try {
       await supabase.from('payout_requests').insert({ teacher_id: user.id, amount: stats.earnings, method: payoutMethod, payment_address: payoutAddress })
       alert('Solicitud enviada'); setShowPayoutModal(false)
