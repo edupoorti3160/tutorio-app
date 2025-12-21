@@ -40,14 +40,14 @@ export default function Classroom() {
     const [supabase] = useState(() => createClient())
     const [autoJoin, setAutoJoin] = useState(false)
 
-useEffect(() => {
-  if (typeof window === 'undefined') return
-  const searchParams = new URLSearchParams(window.location.search)
-  const auto = searchParams.get('autoJoin') === '1'
-  if (auto) {
-    setAutoJoin(true)
-  }
-}, [])
+    useEffect(() => {
+        if (typeof window === 'undefined') return
+        const searchParams = new URLSearchParams(window.location.search)
+        const auto = searchParams.get('autoJoin') === '1'
+        if (auto) {
+            setAutoJoin(true)
+        }
+    }, [])
 
 
     // --- ESTADOS ---
@@ -57,10 +57,10 @@ useEffect(() => {
     
     const [hasJoined, setHasJoined] = useState(false)
     useEffect(() => {
-  if (autoJoin && !hasJoined) {
-    setHasJoined(true)
-  }
-}, [autoJoin, hasJoined])
+        if (autoJoin && !hasJoined) {
+            setHasJoined(true)
+        }
+    }, [autoJoin, hasJoined])
     const [micOn, setMicOn] = useState(true)
     const [cameraOn, setCameraOn] = useState(true)
 
@@ -103,10 +103,10 @@ useEffect(() => {
     const recognitionRef = useRef<any>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null)
 
-    // WebRTC
+    // WebRTC - CORREGIDO: Solo se activa cuando el rol y el ID están definidos para evitar desincronización
     const isInitiator = userRole === 'teacher';
     const { localStream, remoteStream, isConnected } = useWebRTC(
-        hasJoined ? (roomId as string) : '', 
+        (hasJoined && !isRoleLoading && userId) ? (roomId as string) : '', 
         userId || '', 
         isInitiator
     );

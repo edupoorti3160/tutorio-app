@@ -133,11 +133,8 @@ export default function StudentDashboard() {
           (payload) => {
             console.log('STUDENT UPDATE payload', payload, 'currentRequestId:', currentRequestId)
 
-            // NUEVA LÓGICA: cualquier solicitud de este alumno que pase de waiting -> accepted
-            if (
-              payload.old.status === 'waiting' &&
-              payload.new.status === 'accepted'
-            ) {
+            // CORRECCIÓN: Quitamos la dependencia de payload.old.status para evitar bloqueos si el historial no carga
+            if (payload.new.status === 'accepted') {
               const roomLink = payload.new.room_id
               
               // Notificación en inglés
@@ -174,7 +171,7 @@ export default function StudentDashboard() {
             filter: `student_id=eq.${user.id}`
           },
           (payload) => {
-            if (payload.new.status === 'confirmed') {
+            if (payload.new.status === 'accepted') {
               setNotifications(prev => [{
                 id: Date.now(),
                 title: 'New class confirmed',
@@ -207,7 +204,7 @@ export default function StudentDashboard() {
     if (nextClass && nextClass.meeting_link) {
       router.push(`/room/${nextClass.meeting_link}`)
     } else {
-      router.push('/room/demo-class?lang=en') // Agregado ?lang=en por si acaso
+      router.push('/room/demo-class?lang=en') 
     }
   }
 
@@ -274,7 +271,6 @@ export default function StudentDashboard() {
         </div>
         
         <nav className="flex-1 p-4 space-y-2">
-          {/* CORREGIDO: Apunta a /schedule para que no sea un link muerto */}
           <Link href="/dashboard/student/schedule" className="w-full flex items-center gap-3 px-4 py-3 bg-indigo-50 text-indigo-700 rounded-xl font-medium text-left">
             <BookOpen className="w-5 h-5" /> My Classes
           </Link>
