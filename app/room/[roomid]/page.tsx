@@ -38,6 +38,17 @@ export default function Classroom() {
     const router = useRouter()
     const roomId = params.roomid
     const [supabase] = useState(() => createClient())
+    const [autoJoin, setAutoJoin] = useState(false)
+
+useEffect(() => {
+  if (typeof window === 'undefined') return
+  const searchParams = new URLSearchParams(window.location.search)
+  const auto = searchParams.get('autoJoin') === '1'
+  if (auto) {
+    setAutoJoin(true)
+  }
+}, [])
+
 
     // --- ESTADOS ---
     const [userRole, setUserRole] = useState<'teacher' | 'student' | null>(null)
@@ -45,6 +56,11 @@ export default function Classroom() {
     const [isRoleLoading, setIsRoleLoading] = useState(true)
     
     const [hasJoined, setHasJoined] = useState(false)
+    useEffect(() => {
+  if (autoJoin && !hasJoined) {
+    setHasJoined(true)
+  }
+}, [autoJoin, hasJoined])
     const [micOn, setMicOn] = useState(true)
     const [cameraOn, setCameraOn] = useState(true)
 

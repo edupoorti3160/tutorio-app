@@ -155,7 +155,7 @@ export default function StudentDashboard() {
 
               // Entramos automáticamente a la sala
               if (roomLink) {
-                router.push(`/room/${roomLink}`)
+                router.push(`/room/${roomLink}?autoJoin=1`)
               }
 
               // Opcional: sonido
