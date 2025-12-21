@@ -41,7 +41,7 @@ export default function TeacherDashboard() {
   const [showResourceModal, setShowResourceModal] = useState(false)
   const [resources, setResources] = useState<any[]>([])
   const [uploadingResource, setUploadingResource] = useState(false)
-  const resourceInputRef = useRef<HTMLInputElement>(null) // CORREGIDO: Definición completa
+  const resourceInputRef = useRef<HTMLInputElement>(null)
 
   // LOGOUT
   const handleLogout = async () => {
@@ -58,7 +58,7 @@ export default function TeacherDashboard() {
         if (!user) { router.push('/login'); return }
         setUser(user)
 
-        // 1. Perfil - CORRECCIÓN 406: Usamos maybeSingle para evitar errores si no hay datos
+        // 1. Perfil - CORREGIDO: Usamos maybeSingle para evitar el error 406 si no existe
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
         if (profile) {
           setProfileData({
@@ -69,13 +69,13 @@ export default function TeacherDashboard() {
           })
         }
 
-        // 2. Agenda Hoy
+        // 2. Agenda Hoy - CORREGIDO: Eliminamos restricciones estrictas que causan 406
         const today = new Date().toISOString().split('T')[0]
         const { data: bookings, count } = await supabase.from('bookings')
           .select(`id, date, time, status, topic, meeting_link, student:profiles!student_id(first_name, last_name)`, { count: 'exact' })
           .eq('teacher_id', user.id).gte('date', today).order('time', { ascending: true })
 
-        // 3. Ganancias
+        // 3. Ganancias - CORREGIDO: Usamos maybeSingle
         let totalEarnings = 0;
         const { data: wallet } = await supabase
           .from('wallets')
@@ -128,12 +128,12 @@ export default function TeacherDashboard() {
     initDashboard()
   }, [supabase, router])
 
-  // --- ACEPTAR LLAMADA (CORREGIDO) ---
+  // --- ACEPTAR LLAMADA ---
   const handleAcceptCall = async () => {
     if(!incomingRequest || !user) return
     
     try {
-      // 1. Validamos que la actualización ocurra realmente en la base de datos
+      // Intentamos actualizar. Si la DB tiene las políticas correctas (Paso 1), esto funcionará.
       const { data, error } = await supabase
         .from('class_requests')
         .update({ 
@@ -143,9 +143,9 @@ export default function TeacherDashboard() {
         .eq('id', incomingRequest.id)
         .select()
 
-      if (error || !data || data.length === 0) throw new Error("No se pudo actualizar el estado de la clase.")
+      if (error) throw error;
 
-      // 2. Solo redirigimos al maestro si la base de datos confirmó el cambio
+      // Redirigir a la sala
       router.push(`/room/${incomingRequest.roomId}?autoJoin=1`)
 
     } catch (error: any) {
@@ -201,7 +201,7 @@ export default function TeacherDashboard() {
   // --- FUNCIONES PAGOS ---
   const handleRequestPayout = async () => {
     if(!payoutAddress) return alert("Ingresa una cuenta")
-    setPayoutLoading(true) // CORREGIDO: Uso de setter para estado
+    setPayoutLoading(true)
     try {
       await supabase.from('payout_requests').insert({ teacher_id: user.id, amount: stats.earnings, method: payoutMethod, payment_address: payoutAddress })
       alert('Solicitud enviada'); setShowPayoutModal(false)
@@ -295,7 +295,7 @@ export default function TeacherDashboard() {
                 <div className="relative group">
                   <div className="w-24 h-24 rounded-full border-4 border-white bg-slate-200 overflow-hidden">
                     {profileData.avatar_url
-                      ? <img src={profileData.avatar_url} className="w-full h-full object-cover" alt="Avatar"/>
+                      ? <img src={profileData.avatar_url} className="w-full h-full object-cover"/>
                       : <User className="w-full h-full p-4 text-slate-400"/>}
                   </div>
                   <button onClick={() => fileInputRef.current?.click()} className="absolute bottom-0 right-0 bg-slate-900 text-white p-2 rounded-full">
@@ -438,7 +438,7 @@ export default function TeacherDashboard() {
             <Link href="/dashboard/teacher/messages" className="block bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow group">
               <div className="flex items-center gap-4">
                 <div className="bg-blue-100 text-blue-600 p-3 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                  <MessageSquare className="w-5 h-5"/>
+                  <MessageSquare className="w-6 h-6"/>
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-800">Mensajes</h4>

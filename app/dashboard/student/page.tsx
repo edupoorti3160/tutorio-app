@@ -41,7 +41,7 @@ export default function StudentDashboard() {
         }
         setUserEmail(user.email || "")
 
-        // Obtener/Crear Perfil - CORREGIDO: Usamos .limit(1) para evitar el error 406
+        // Obtener/Crear Perfil - CORREGIDO: Usamos limit(1) para evitar el error 406
         let { data: profileData } = await supabase
           .from('profiles')
           .select('first_name, last_name')
@@ -64,7 +64,7 @@ export default function StudentDashboard() {
 
         if (profile) setStudentName(`${profile.first_name}`)
 
-        // Obtener/Crear Billetera - CORREGIDO: Usamos .limit(1) para evitar el error 406
+        // Obtener/Crear Billetera - CORREGIDO: Usamos limit(1)
         let { data: walletData } = await supabase
           .from('wallets')
           .select('balance')
@@ -83,7 +83,7 @@ export default function StudentDashboard() {
         
         if (wallet) setBalance(wallet.balance)
 
-        // Obtener Clases - CORREGIDO: Usamos .limit(1) para evitar el error 406
+        // Obtener Clases - CORREGIDO: Usamos limit(1)
         const today = new Date().toISOString().split('T')[0]
         
         const { data: upcomingData } = await supabase
@@ -136,8 +136,7 @@ export default function StudentDashboard() {
           (payload) => {
             console.log('STUDENT UPDATE payload', payload)
 
-            // CAMBIO REALIZADO: Simplificamos el criterio para que solo dependa del nuevo estado 'accepted'
-            // Esto asegura que el estudiante entre a la sala incluso si el historial del estado no está disponible
+            // CORRECCIÓN SINCRONIZACIÓN: Solo dependemos del nuevo estado 'accepted'
             if (payload.new.status === 'accepted') {
               const roomLink = payload.new.room_id
               
@@ -154,7 +153,7 @@ export default function StudentDashboard() {
               setCalling(false)
 
               if (roomLink) {
-                // Redirección inmediata con autoJoin para sincronizar con el aula
+                // Redirección inmediata con autoJoin
                 router.push(`/room/${roomLink}?autoJoin=1`)
               }
 
