@@ -189,8 +189,8 @@ export default function EliteBoutiquePage() {
     if (!selectedProduct) return
     setGenerating(true)
     setGeneratedLesson(null)
-
-    const API_KEY = "AIzaSyC8A8c5ceMoIonb1xw4NoS6M756xvuISVI" // ⚠️ Cuidado: Expuesta en cliente
+    
+    const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_TRANSLATE_API_KEY
     const MODEL_NAME = "gemini-flash-lite-latest"
 
     // AQUÍ HACEMOS LA MAGIA: REEMPLAZAR LAS VARIABLES

@@ -118,72 +118,80 @@ export default function StudentDashboard() {
         const channel = supabase.channel('student-dashboard-realtime')
 
         channel
-            // A) Escuchar cuando un profesor acepta la llamada instantánea
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'class_requests',
-                    filter: `student_id=eq.${user.id}`
-                },
-                (payload) => {
-                    // Si el estado cambia a 'accepted', notificamos
-                    if (payload.new.status === 'accepted') {
-                        const roomLink = payload.new.room_id
-                        
-                        // Agregamos notificación visual
-                        setNotifications(prev => [{
-                            id: Date.now(),
-                            title: '¡Profesor Conectado!',
-                            message: `Tu solicitud ha sido aceptada.`,
-                            actionLabel: 'ENTRAR AHORA',
-                            actionLink: roomLink,
-                            type: 'urgent'
-                        }, ...prev])
-                        
-                        // Abrimos el panel automáticamente para que lo vea
-                        setIsNotificationsOpen(true)
-                        
-                        // Quitamos el estado de "Llamando" del botón
-                        setCalling(false)
-                        
-                        // Opcional: Sonido de notificación
-                        const audio = new Audio('/notification.mp3') 
-                        audio.play().catch(() => {}) 
-                    }
-                }
-            )
-            // B) Escuchar nuevas reservas confirmadas
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'bookings',
-                    filter: `student_id=eq.${user.id}`
-                },
-                (payload) => {
-                    if (payload.new.status === 'confirmed') {
-                        setNotifications(prev => [{
-                            id: Date.now(),
-                            title: 'Nueva Clase Confirmada',
-                            message: `Clase agendada para el ${payload.new.date} a las ${payload.new.time}`,
-                            type: 'info'
-                        }, ...prev])
-                        setIsNotificationsOpen(true)
-                    }
-                }
-            )
-            .subscribe()
+          // A) Escuchar cuando un profesor cambia el estado de la llamada instantánea
+          .on(
+              'postgres_changes',
+              {
+                  event: 'UPDATE',
+                  schema: 'public',
+                  table: 'class_requests',
+                  filter: `student_id=eq.${user.id}`
+              },
+              (payload) => {
+                  // Antes estaba pendiente de 'accepted' sin comprobar el cambio;
+                  // ahora reaccionamos cuando pasa de 'waiting' a 'accepted'
+                  if (
+                    payload.old.status === 'waiting' &&
+                    payload.new.status === 'accepted'
+                  ) {
+                      const roomLink = payload.new.room_id
+                      
+                      // Agregamos notificación visual
+                      setNotifications(prev => [{
+                          id: Date.now(),
+                          title: '¡Profesor Conectado!',
+                          message: `Tu solicitud ha sido aceptada.`,
+                          actionLabel: 'ENTRAR AHORA',
+                          actionLink: roomLink,
+                          type: 'urgent'
+                      }, ...prev])
+                      
+                      // Abrimos el panel automáticamente para que lo vea
+                      setIsNotificationsOpen(true)
+                      
+                      // Quitamos el estado de "Llamando" del botón
+                      setCalling(false)
+                      
+                      // Entramos automáticamente a la sala
+                      if (roomLink) {
+                        router.push(`/room/${roomLink}`)
+                      }
+
+                      // Opcional: Sonido de notificación
+                      const audio = new Audio('/notification.mp3') 
+                      audio.play().catch(() => {}) 
+                  }
+              }
+          )
+          // B) Escuchar nuevas reservas confirmadas
+          .on(
+              'postgres_changes',
+              {
+                  event: 'INSERT',
+                  schema: 'public',
+                  table: 'bookings',
+                  filter: `student_id=eq.${user.id}`
+              },
+              (payload) => {
+                  if (payload.new.status === 'confirmed') {
+                      setNotifications(prev => [{
+                          id: Date.now(),
+                          title: 'Nueva Clase Confirmada',
+                          message: `Clase agendada para el ${payload.new.date} a las ${payload.new.time}`,
+                          type: 'info'
+                      }, ...prev])
+                      setIsNotificationsOpen(true)
+                  }
+              }
+          )
+          .subscribe()
 
         return () => {
             supabase.removeChannel(channel)
         }
     }
     setupRealtime()
-  }, [supabase])
-
+  }, [supabase, router])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -321,7 +329,7 @@ export default function StudentDashboard() {
              <div><p className="text-sm text-slate-500 font-medium">Balance</p><p className="text-2xl font-bold text-slate-900">${balance.toFixed(2)}</p></div>
           </div>
           <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden flex flex-col justify-center">
-             <div className="relative z-10 flex items-center justify-between">
+             <div className="relative z-10 flex items-center justify_between">
                <div><p className="font-bold text-lg leading-tight">Need Help Now?</p><p className="text-xs text-indigo-200 mt-1">Talk to a teacher instantly.</p></div>
                <button onClick={handleInstantCall} disabled={calling} className="bg-white text-indigo-700 p-3 rounded-full hover:bg-indigo-50 shadow-md transition-transform hover:scale-110 disabled:opacity-50 disabled:scale-100">
                   {calling ? <Loader2 className="w-5 h-5 animate-spin"/> : <Zap className="w-5 h-5 fill-current"/>}
@@ -345,7 +353,7 @@ export default function StudentDashboard() {
                 ) : (
                     <>
                         <h3 className="text-lg font-medium text-slate-900">No classes scheduled right now</h3>
-                        <p className="text-slate-500 max-w-sm mx-auto">Book a class or use the "Instant Help" button above.</p>
+                        <p className="text-slate-500 max-w-sm mx_auto">Book a class or use the "Instant Help" button above.</p>
                     </>
                 )}
             </div>
@@ -361,8 +369,8 @@ export default function StudentDashboard() {
       {isNotificationsOpen && (
           <div className="fixed inset-0 z-50 flex justify-end">
               <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setIsNotificationsOpen(false)}></div>
-              <div className="relative w-full max-w-sm h-full bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-                  <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+              <div className="relative w_full max-w-sm h-full bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+                  <div className="p-5 border-b border-slate-200 flex justify_between items-center bg-slate-50">
                       <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2"><Bell className="w-5 h-5 text-indigo-600"/> Notifications</h2>
                       <button onClick={() => setIsNotificationsOpen(false)} className="p-1 text-slate-500 hover:text-red-500 transition-colors"><X className="w-6 h-6"/></button>
                   </div>
