@@ -13,7 +13,7 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true)
   const [calling, setCalling] = useState(false)
 
-  // NEW: track current request id
+  // NEW: track current request id (lo seguimos guardando por logs, pero ya no se usa en el if)
   const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
   
   const [studentName, setStudentName] = useState("Student")
@@ -133,10 +133,8 @@ export default function StudentDashboard() {
           (payload) => {
             console.log('STUDENT UPDATE payload', payload, 'currentRequestId:', currentRequestId)
 
-            // Solo reaccionar a la solicitud que este alumno acaba de crear (si la tenemos)
+            // NUEVA LÓGICA: cualquier solicitud de este alumno que pase de waiting -> accepted
             if (
-              currentRequestId &&
-              payload.new.id === currentRequestId &&
               payload.old.status === 'waiting' &&
               payload.new.status === 'accepted'
             ) {
@@ -246,7 +244,7 @@ export default function StudentDashboard() {
 
       console.log('STUDENT created request', inserted)
 
-      // Guardamos el id de ESTA solicitud
+      // Guardamos el id de ESTA solicitud (solo para debug)
       setCurrentRequestId(inserted.id)
 
       // Feedback visual inmediato (en inglés)
@@ -365,7 +363,7 @@ export default function StudentDashboard() {
         {/* --- MAIN SECTION: CLASSROOM --- */}
         <section className="mb-10">
           <h2 className="text-lg font-bold text-slate-900 mb-4">Your Virtual Classroom</h2>
-          <div className="bg-white rounded-2xl p-8 border border-slate-200 border-dashed text-center flex flex-col items-center justify-center gap-4">
+          <div className="bg-white rounded-2xl p-8 border border-slate-200 border-dashed text-center flex flex-col items_center justify-center gap-4">
             <div className="p-4 bg-slate-50 rounded-full">
               <Video className="w-8 h-8 text-slate-400" />
             </div>
