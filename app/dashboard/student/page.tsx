@@ -12,6 +12,9 @@ export default function StudentDashboard() {
   
   const [loading, setLoading] = useState(true)
   const [calling, setCalling] = useState(false)
+
+  // NEW: track current request id
+  const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
   
   const [studentName, setStudentName] = useState("Student")
   const [userEmail, setUserEmail] = useState("")
@@ -109,7 +112,7 @@ export default function StudentDashboard() {
     initDashboard()
   }, [router, supabase])
 
-  // --- 2. NUEVO: ESCUCHA EN TIEMPO REAL (NOTIFICACIONES) ---
+  // --- 2. ESCUCHA EN TIEMPO REAL (NOTIFICACIONES) ---
   useEffect(() => {
     const setupRealtime = async () => {
         const { data: { user } } = await supabase.auth.getUser()
@@ -128,36 +131,34 @@ export default function StudentDashboard() {
                   filter: `student_id=eq.${user.id}`
               },
               (payload) => {
-                  // Antes estaba pendiente de 'accepted' sin comprobar el cambio;
-                  // ahora reaccionamos cuando pasa de 'waiting' a 'accepted'
+                  // Solo reaccionar a la solicitud que este alumno acaba de crear (si la tenemos)
                   if (
+                    currentRequestId &&
+                    payload.new.id === currentRequestId &&
                     payload.old.status === 'waiting' &&
                     payload.new.status === 'accepted'
                   ) {
                       const roomLink = payload.new.room_id
                       
-                      // Agregamos notificación visual
+                      // Notificación en inglés
                       setNotifications(prev => [{
                           id: Date.now(),
-                          title: '¡Profesor Conectado!',
-                          message: `Tu solicitud ha sido aceptada.`,
-                          actionLabel: 'ENTRAR AHORA',
+                          title: 'Tutor connected',
+                          message: 'Your instant help request was accepted.',
+                          actionLabel: 'JOIN CLASS NOW',
                           actionLink: roomLink,
                           type: 'urgent'
                       }, ...prev])
                       
-                      // Abrimos el panel automáticamente para que lo vea
                       setIsNotificationsOpen(true)
-                      
-                      // Quitamos el estado de "Llamando" del botón
                       setCalling(false)
-                      
+
                       // Entramos automáticamente a la sala
                       if (roomLink) {
                         router.push(`/room/${roomLink}`)
                       }
 
-                      // Opcional: Sonido de notificación
+                      // Opcional: sonido
                       const audio = new Audio('/notification.mp3') 
                       audio.play().catch(() => {}) 
                   }
@@ -176,8 +177,8 @@ export default function StudentDashboard() {
                   if (payload.new.status === 'confirmed') {
                       setNotifications(prev => [{
                           id: Date.now(),
-                          title: 'Nueva Clase Confirmada',
-                          message: `Clase agendada para el ${payload.new.date} a las ${payload.new.time}`,
+                          title: 'New class confirmed',
+                          message: `Class scheduled for ${payload.new.date} at ${payload.new.time}`,
                           type: 'info'
                       }, ...prev])
                       setIsNotificationsOpen(true)
@@ -191,7 +192,7 @@ export default function StudentDashboard() {
         }
     }
     setupRealtime()
-  }, [supabase, router])
+  }, [supabase, router, currentRequestId])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -219,7 +220,7 @@ export default function StudentDashboard() {
         const { data: teachers } = await supabase.from('profiles').select('id, first_name').eq('role', 'teacher').limit(1)
 
         if (!teachers || teachers.length === 0) {
-            alert("No hay profesores disponibles ahora mismo.")
+            alert("No tutors are available right now.")
             setCalling(false)
             return
         }
@@ -229,7 +230,7 @@ export default function StudentDashboard() {
         // Usamos un ID de sala único
         const uniqueRoomId = `instant-${user.id}-${Date.now().toString().slice(-4)}`
 
-        const { error } = await supabase.from('class_requests').insert({
+        const { data: inserted, error } = await supabase.from('class_requests').insert({
             student_id: user.id,
             teacher_id: targetTeacher.id,
             student_name: studentName, 
@@ -237,15 +238,18 @@ export default function StudentDashboard() {
             level: "General",
             room_id: uniqueRoomId,
             status: 'waiting' // Importante para el trigger
-        })
+        }).select().single()
 
         if (error) throw error
-        
-        // Feedback visual inmediato (No bloqueante)
+
+        // Guardamos el id de ESTA solicitud
+        setCurrentRequestId(inserted.id)
+
+        // Feedback visual inmediato (en inglés)
         setNotifications(prev => [{
             id: Date.now(),
-            title: 'Solicitud Enviada',
-            message: `Esperando a ${targetTeacher.first_name}... Te avisaremos cuando acepte.`,
+            title: 'Request sent',
+            message: `Waiting for ${targetTeacher.first_name} to join your instant class.`,
             type: 'info'
         }, ...prev])
         setIsNotificationsOpen(true)
