@@ -41,7 +41,7 @@ export default function StudentDashboard() {
         }
         setUserEmail(user.email || "")
 
-        // Obtener/Crear Perfil - CORREGIDO: Usamos .limit(1) para evitar error 406
+        // Obtener/Crear Perfil - CORREGIDO: Usamos .limit(1) para evitar el error 406
         let { data: profileData } = await supabase
           .from('profiles')
           .select('first_name, last_name')
@@ -49,7 +49,7 @@ export default function StudentDashboard() {
           .limit(1)
         
         let profile = profileData?.[0]
-
+        
         if (!profile) {
           const { data: newProfile } = await supabase.from('profiles').insert({
             id: user.id,
@@ -64,7 +64,7 @@ export default function StudentDashboard() {
 
         if (profile) setStudentName(`${profile.first_name}`)
 
-        // Obtener/Crear Billetera - CORREGIDO: Usamos .limit(1) para evitar error 406
+        // Obtener/Crear Billetera - CORREGIDO: Usamos .limit(1) para evitar el error 406
         let { data: walletData } = await supabase
           .from('wallets')
           .select('balance')
@@ -83,7 +83,7 @@ export default function StudentDashboard() {
         
         if (wallet) setBalance(wallet.balance)
 
-        // Obtener Clases - CORREGIDO: Usamos .limit(1) para evitar error 406
+        // Obtener Clases - CORREGIDO: Usamos .limit(1) para evitar el error 406
         const today = new Date().toISOString().split('T')[0]
         
         const { data: upcomingData } = await supabase
@@ -136,7 +136,8 @@ export default function StudentDashboard() {
           (payload) => {
             console.log('STUDENT UPDATE payload', payload)
 
-            // CORRECCIÓN SINCRONIZACIÓN: Solo dependemos del nuevo estado 'accepted'
+            // CAMBIO REALIZADO: Simplificamos el criterio para que solo dependa del nuevo estado 'accepted'
+            // Esto asegura que el estudiante entre a la sala incluso si el historial del estado no está disponible
             if (payload.new.status === 'accepted') {
               const roomLink = payload.new.room_id
               
@@ -361,7 +362,7 @@ export default function StudentDashboard() {
               ) : (
                 <>
                   <h3 className="text-lg font-medium text-slate-900">No classes scheduled right now</h3>
-                  <p className="text-slate-500 max-w-sm mx-auto">
+                  <p className="text-slate-500 max-w-sm mx_auto">
                     Book a class or use the "Instant Help" button above.
                   </p>
                 </>
@@ -431,7 +432,7 @@ export default function StudentDashboard() {
 
                     {notif.actionLabel && notif.actionLink && (
                       <button
-                        onClick={() => router.push(`/room/${notif.actionLink}`)}
+                        onClick={() => router.push(`/room/${notif.actionLink}?autoJoin=1`)}
                         className="w-full py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm"
                       >
                         <Video className="w-3 h-3" /> {notif.actionLabel}

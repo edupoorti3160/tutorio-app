@@ -41,7 +41,7 @@ export default function TeacherDashboard() {
   const [showResourceModal, setShowResourceModal] = useState(false)
   const [resources, setResources] = useState<any[]>([])
   const [uploadingResource, setUploadingResource] = useState(false)
-  const resourceInputRef = useRef<HTMLInputElement>(null) 
+  const resourceInputRef = useRef<HTMLInputElement>(null) // CORREGIDO: Añadido 'const'
 
   // LOGOUT
   const handleLogout = async () => {
@@ -58,8 +58,8 @@ export default function TeacherDashboard() {
         if (!user) { router.push('/login'); return }
         setUser(user)
 
-        // 1. Perfil
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+        // 1. Perfil - CORRECCIÓN 406: Usamos maybeSingle para evitar errores si no hay datos
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
         if (profile) {
           setProfileData({
             first_name: profile.first_name || '', last_name: profile.last_name || '',
@@ -81,13 +81,10 @@ export default function TeacherDashboard() {
           .from('wallets')
           .select('balance')
           .eq('user_id', user.id)
-          .single();
+          .maybeSingle();
 
         if (wallet) {
           totalEarnings = Number(wallet.balance) || 0;
-        } else {
-          const { data: completed } = await supabase.from('bookings').select('price_paid').eq('teacher_id', user.id).eq('status', 'completed')
-          if (completed) totalEarnings = completed.reduce((sum, b) => sum + (b.price_paid || 0), 0)
         }
 
         if (bookings) {
@@ -109,8 +106,6 @@ export default function TeacherDashboard() {
             'postgres_changes', 
             { event: 'INSERT', schema: 'public', table: 'class_requests', filter: 'status=eq.waiting' }, 
             (payload: any) => {
-              console.log('TEACHER incoming class_request', payload.new)
-
               if(payload.new.status === 'waiting') {
                 setIncomingRequest({ 
                   id: payload.new.id, 
@@ -119,7 +114,7 @@ export default function TeacherDashboard() {
                 })
                 try {
                   const audio = new Audio('/notification.mp3')
-                  audio.play().catch(e => console.log("Audio play failed interaction required"))
+                  audio.play().catch(() => {})
                 } catch(e) {}
               }
             }
@@ -137,24 +132,25 @@ export default function TeacherDashboard() {
   const handleAcceptCall = async () => {
     if(!incomingRequest || !user) return
     
-    console.log('TEACHER accepting request', incomingRequest, 'teacherId:', user.id)
-    
     try {
-      const { error } = await supabase
+      // 1. Validamos que la actualización ocurra realmente en la base de datos
+      const { data, error } = await supabase
         .from('class_requests')
         .update({ 
           status: 'accepted',
           teacher_id: user.id
         })
         .eq('id', incomingRequest.id)
+        .select()
 
-      if (error) throw error;
+      if (error || !data || data.length === 0) throw new Error("No se pudo actualizar el estado de la clase.")
 
+      // 2. Solo redirigimos al maestro si la base de datos confirmó el cambio
       router.push(`/room/${incomingRequest.roomId}?autoJoin=1`)
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error aceptando llamada", error)
-      alert("No se pudo conectar con el estudiante. Por favor, intenta de nuevo.")
+      alert("Error: " + error.message)
     }
   }
 
@@ -179,7 +175,6 @@ export default function TeacherDashboard() {
       alert("✅ Perfil guardado correctamente")
       setIsEditingProfile(false)
     } catch (e: any) { 
-      console.error(e)
       alert('Error al guardar: ' + e.message) 
     } finally { 
       setSavingProfile(false) 
@@ -197,10 +192,7 @@ export default function TeacherDashboard() {
       
       setProfileData(prev => ({ ...prev, avatar_url: publicUrl }))
       
-      const payload = {
-        id: user.id,
-        avatar_url: publicUrl
-      }
+      const payload = { id: user.id, avatar_url: publicUrl }
       await supabase.rpc('update_profile_dynamic', { payload })
 
     } catch (e:any) { alert(e.message) } finally { setSavingProfile(false) }
@@ -209,7 +201,7 @@ export default function TeacherDashboard() {
   // --- FUNCIONES PAGOS ---
   const handleRequestPayout = async () => {
     if(!payoutAddress) return alert("Ingresa una cuenta")
-    setPayoutLoading(true) // CAMBIO: Usar setter en lugar de asignación directa
+    setPayoutLoading(true) // CORREGIDO: Uso de setter en lugar de asignación directa
     try {
       await supabase.from('payout_requests').insert({ teacher_id: user.id, amount: stats.earnings, method: payoutMethod, payment_address: payoutAddress })
       alert('Solicitud enviada'); setShowPayoutModal(false)
