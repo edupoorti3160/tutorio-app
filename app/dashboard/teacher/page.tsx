@@ -41,7 +41,7 @@ export default function TeacherDashboard() {
   const [showResourceModal, setShowResourceModal] = useState(false)
   const [resources, setResources] = useState<any[]>([])
   const [uploadingResource, setUploadingResource] = useState(false)
-  const resourceInputRef = useRef<HTMLInputElement>(null) // CORREGIDO: Añadido 'const'
+  const resourceInputRef = useRef<HTMLInputElement>(null) // CORREGIDO: Definición completa
 
   // LOGOUT
   const handleLogout = async () => {
@@ -201,7 +201,7 @@ export default function TeacherDashboard() {
   // --- FUNCIONES PAGOS ---
   const handleRequestPayout = async () => {
     if(!payoutAddress) return alert("Ingresa una cuenta")
-    setPayoutLoading(true) // CORREGIDO: Uso de setter en lugar de asignación directa
+    setPayoutLoading(true) // CORREGIDO: Uso de setter para estado
     try {
       await supabase.from('payout_requests').insert({ teacher_id: user.id, amount: stats.earnings, method: payoutMethod, payment_address: payoutAddress })
       alert('Solicitud enviada'); setShowPayoutModal(false)
@@ -295,7 +295,7 @@ export default function TeacherDashboard() {
                 <div className="relative group">
                   <div className="w-24 h-24 rounded-full border-4 border-white bg-slate-200 overflow-hidden">
                     {profileData.avatar_url
-                      ? <img src={profileData.avatar_url} className="w-full h-full object-cover"/>
+                      ? <img src={profileData.avatar_url} className="w-full h-full object-cover" alt="Avatar"/>
                       : <User className="w-full h-full p-4 text-slate-400"/>}
                   </div>
                   <button onClick={() => fileInputRef.current?.click()} className="absolute bottom-0 right-0 bg-slate-900 text-white p-2 rounded-full">
@@ -438,7 +438,7 @@ export default function TeacherDashboard() {
             <Link href="/dashboard/teacher/messages" className="block bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow group">
               <div className="flex items-center gap-4">
                 <div className="bg-blue-100 text-blue-600 p-3 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                  <MessageSquare className="w-6 h-6"/>
+                  <MessageSquare className="w-5 h-5"/>
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-800">Mensajes</h4>

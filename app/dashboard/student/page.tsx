@@ -362,7 +362,7 @@ export default function StudentDashboard() {
               ) : (
                 <>
                   <h3 className="text-lg font-medium text-slate-900">No classes scheduled right now</h3>
-                  <p className="text-slate-500 max-w-sm mx_auto">
+                  <p className="text-slate-500 max-w-sm mx-auto">
                     Book a class or use the "Instant Help" button above.
                   </p>
                 </>
