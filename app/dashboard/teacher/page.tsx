@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { 
-  UploadCloud, Video, Users, Calendar, 
+import {
+  UploadCloud, Video, Users, Calendar,
   Loader2, Camera, Edit2, Save, X, DollarSign, BookOpen, User, LogOut, Wallet, ChevronRight, FileText, Trash2, MessageSquare, Clock, ShoppingBag
 } from 'lucide-react'
 import Link from 'next/link'
@@ -12,11 +12,11 @@ import { useRouter } from 'next/navigation'
 export default function TeacherDashboard() {
   const [supabase] = useState(() => createClient())
   const router = useRouter()
-  
+
   // Estados Generales
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
-  
+
   // Estados del Dashboard
   const [todaySchedule, setTodaySchedule] = useState<any[]>([])
   const [incomingRequest, setIncomingRequest] = useState<any>(null)
@@ -89,8 +89,8 @@ export default function TeacherDashboard() {
 
         if (bookings) {
           const formatted = bookings.map((b: any) => ({
-             id: b.id, time: b.time, student: b.student ? `${b.student.first_name} ${b.student.last_name}` : 'Disponible',
-             type: b.topic || 'Clase', status: b.status, date: b.date, link: b.meeting_link || 'demo-room'
+            id: b.id, time: b.time, student: b.student ? `${b.student.first_name} ${b.student.last_name}` : 'Disponible',
+            type: b.topic || 'Clase', status: b.status, date: b.date, link: b.meeting_link || 'demo-room'
           })).filter((b: any) => b.date === today)
           setTodaySchedule(formatted)
           setStats({ classes: count || 0, earnings: totalEarnings })
@@ -103,19 +103,19 @@ export default function TeacherDashboard() {
         // 5. Canal Realtime (SOLICITUDES DE LLAMADA)
         const channel = supabase.channel('room-requests')
           .on(
-            'postgres_changes', 
-            { event: 'INSERT', schema: 'public', table: 'class_requests', filter: 'status=eq.waiting' }, 
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'class_requests', filter: 'status=eq.waiting' },
             (payload: any) => {
-              if(payload.new.status === 'waiting') {
-                setIncomingRequest({ 
-                  id: payload.new.id, 
-                  student: payload.new.student_name, 
-                  roomId: payload.new.room_id 
+              if (payload.new.status === 'waiting') {
+                setIncomingRequest({
+                  id: payload.new.id,
+                  student: payload.new.student_name,
+                  roomId: payload.new.room_id
                 })
                 try {
                   const audio = new Audio('/notification.mp3')
-                  audio.play().catch(() => {})
-                } catch(e) {}
+                  audio.play().catch(() => { })
+                } catch (e) { }
               }
             }
           )
@@ -130,13 +130,13 @@ export default function TeacherDashboard() {
 
   // --- ACEPTAR LLAMADA ---
   const handleAcceptCall = async () => {
-    if(!incomingRequest || !user) return
-    
+    if (!incomingRequest || !user) return
+
     try {
       // Intentamos actualizar. Si la DB tiene las políticas correctas (Paso 1), esto funcionará.
       const { data, error } = await supabase
         .from('class_requests')
-        .update({ 
+        .update({
           status: 'accepted',
           teacher_id: user.id
         })
@@ -170,14 +170,14 @@ export default function TeacherDashboard() {
       }
 
       const { error } = await supabase.rpc('update_profile_dynamic', { payload })
-      if(error) throw error
+      if (error) throw error
 
       alert("✅ Perfil guardado correctamente")
       setIsEditingProfile(false)
-    } catch (e: any) { 
-      alert('Error al guardar: ' + e.message) 
-    } finally { 
-      setSavingProfile(false) 
+    } catch (e: any) {
+      alert('Error al guardar: ' + e.message)
+    } finally {
+      setSavingProfile(false)
     }
   }
 
@@ -189,23 +189,23 @@ export default function TeacherDashboard() {
     try {
       await supabase.storage.from('avatars').upload(filePath, file)
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath)
-      
+
       setProfileData(prev => ({ ...prev, avatar_url: publicUrl }))
-      
+
       const payload = { id: user.id, avatar_url: publicUrl }
       await supabase.rpc('update_profile_dynamic', { payload })
 
-    } catch (e:any) { alert(e.message) } finally { setSavingProfile(false) }
+    } catch (e: any) { alert(e.message) } finally { setSavingProfile(false) }
   }
 
   // --- FUNCIONES PAGOS ---
   const handleRequestPayout = async () => {
-    if(!payoutAddress) return alert("Ingresa una cuenta")
+    if (!payoutAddress) return alert("Ingresa una cuenta")
     setPayoutLoading(true)
     try {
       await supabase.from('payout_requests').insert({ teacher_id: user.id, amount: stats.earnings, method: payoutMethod, payment_address: payoutAddress })
       alert('Solicitud enviada'); setShowPayoutModal(false)
-    } catch (e:any) { alert(e.message) } finally { setPayoutLoading(false) }
+    } catch (e: any) { alert(e.message) } finally { setPayoutLoading(false) }
   }
 
   // --- SUBIDA DE RECURSOS ---
@@ -214,11 +214,11 @@ export default function TeacherDashboard() {
     const file = e.target.files[0]
     const fileType = file.type.startsWith('image/') ? 'image' : 'pdf'
     const fileName = `${Date.now()}-${file.name}`
-    
+
     setUploadingResource(true)
     try {
       const { error: uploadError } = await supabase.storage.from('class-resources').upload(fileName, file)
-      if(uploadError) throw uploadError
+      if (uploadError) throw uploadError
 
       const { data: { publicUrl } } = supabase.storage.from('class-resources').getPublicUrl(fileName)
 
@@ -227,9 +227,9 @@ export default function TeacherDashboard() {
         title: file.name,
         file_url: publicUrl,
         file_type: fileType
-      }).select().single()
+      }).select().maybeSingle()
 
-      if(dbError) throw dbError
+      if (dbError) throw dbError
 
       setResources([newResource, ...resources])
 
@@ -241,14 +241,14 @@ export default function TeacherDashboard() {
   }
 
   const handleDeleteResource = async (id: string, url: string) => {
-    if(!confirm("¿Borrar este archivo?")) return
+    if (!confirm("¿Borrar este archivo?")) return
     try {
       await supabase.from('resources').delete().eq('id', id)
       setResources(resources.filter(r => r.id !== id))
     } catch (e) { alert("Error eliminando") }
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="w-8 h-8 animate-spin text-indigo-600"/></div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>
 
   return (
     <div className="p-4 md:p-8 font-sans text-slate-900 bg-slate-50 min-h-screen relative">
@@ -295,11 +295,11 @@ export default function TeacherDashboard() {
                 <div className="relative group">
                   <div className="w-24 h-24 rounded-full border-4 border-white bg-slate-200 overflow-hidden">
                     {profileData.avatar_url
-                      ? <img src={profileData.avatar_url} className="w-full h-full object-cover"/>
-                      : <User className="w-full h-full p-4 text-slate-400"/>}
+                      ? <img src={profileData.avatar_url} className="w-full h-full object-cover" />
+                      : <User className="w-full h-full p-4 text-slate-400" />}
                   </div>
                   <button onClick={() => fileInputRef.current?.click()} className="absolute bottom-0 right-0 bg-slate-900 text-white p-2 rounded-full">
-                    <Camera className="w-4 h-4"/>
+                    <Camera className="w-4 h-4" />
                   </button>
                   <input type="file" hidden ref={fileInputRef} accept="image/*" onChange={handleImageUpload} />
                 </div>
@@ -307,7 +307,7 @@ export default function TeacherDashboard() {
                   onClick={isEditingProfile ? handleUpdateProfile : () => setIsEditingProfile(true)}
                   className="mt-12 px-4 py-2 rounded-lg border border-slate-200 font-bold text-sm hover:bg-slate-50 flex gap-2"
                 >
-                  {isEditingProfile ? <Save className="w-4 h-4"/> : <Edit2 className="w-4 h-4"/>}
+                  {isEditingProfile ? <Save className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
                   {isEditingProfile ? 'Guardar' : 'Editar'}
                 </button>
               </div>
@@ -321,7 +321,7 @@ export default function TeacherDashboard() {
                         type="text"
                         className="w-full p-2 border rounded font-bold"
                         value={profileData.headline}
-                        onChange={e=>setProfileData({...profileData, headline: e.target.value})}
+                        onChange={e => setProfileData({ ...profileData, headline: e.target.value })}
                       />
                     ) : (
                       <h2 className="text-xl font-bold">{profileData.headline || 'Sin titular'}</h2>
@@ -334,7 +334,7 @@ export default function TeacherDashboard() {
                         className="w-full p-2 border rounded"
                         rows={3}
                         value={profileData.biography}
-                        onChange={e=>setProfileData({...profileData, biography: e.target.value})}
+                        onChange={e => setProfileData({ ...profileData, biography: e.target.value })}
                       />
                     ) : (
                       <p className="text-sm text-slate-600">{profileData.biography || 'Sin biografía'}</p>
@@ -349,7 +349,7 @@ export default function TeacherDashboard() {
                         type="number"
                         className="w-full p-2 border rounded font-bold"
                         value={profileData.hourly_rate}
-                        onChange={e=>setProfileData({...profileData, hourly_rate: Number(e.target.value)})}
+                        onChange={e => setProfileData({ ...profileData, hourly_rate: Number(e.target.value) })}
                       />
                     ) : (
                       <div className="text-2xl font-black text-green-600">${profileData.hourly_rate}</div>
@@ -361,7 +361,7 @@ export default function TeacherDashboard() {
                       <select
                         className="w-full p-2 border rounded"
                         value={profileData.specialty}
-                        onChange={e=>setProfileData({...profileData, specialty: e.target.value})}
+                        onChange={e => setProfileData({ ...profileData, specialty: e.target.value })}
                       >
                         <option value="spanish">Español</option>
                         <option value="english">Inglés</option>
@@ -380,8 +380,8 @@ export default function TeacherDashboard() {
               <h3 className="font-bold text-slate-900 text-lg">Biblioteca de Recursos</h3>
               <p className="text-slate-500 text-sm">{resources.length} archivos disponibles para tus clases.</p>
             </div>
-            <button 
-              onClick={() => setShowResourceModal(true)} 
+            <button
+              onClick={() => setShowResourceModal(true)}
               className="bg-indigo-600 text-white hover:bg-indigo-700 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-all shadow-md"
             >
               <UploadCloud className="w-4 h-4" /> Gestionar Archivos
@@ -401,63 +401,63 @@ export default function TeacherDashboard() {
                   <h4 className="text-sm font-bold">{cls.student}</h4>
                 </div>
                 <Link href={`/room/${cls.link}`}>
-                  <Video className="w-8 h-8 p-2 bg-green-100 text-green-600 rounded-full hover:bg-green-600 hover:text-white"/>
+                  <Video className="w-8 h-8 p-2 bg-green-100 text-green-600 rounded-full hover:bg-green-600 hover:text-white" />
                 </Link>
               </div>
             ))}
             {todaySchedule.length === 0 && <p className="text-center text-sm text-slate-400">Sin clases hoy</p>}
           </div>
-          
+
           <div className="space-y-3">
             <Link href="/dashboard/teacher/schedule" className="block bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow group">
               <div className="flex items-center gap-4">
                 <div className="bg-purple-100 text-purple-600 p-3 rounded-xl group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                  <Clock className="w-6 h-6"/>
+                  <Clock className="w-6 h-6" />
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-800">Mi Horario</h4>
                   <p className="text-xs text-slate-500">Configura tu disponibilidad</p>
                 </div>
-                <ChevronRight className="ml-auto w-5 h-5 text-slate-300 group-hover:text-slate-500"/>
+                <ChevronRight className="ml-auto w-5 h-5 text-slate-300 group-hover:text-slate-500" />
               </div>
             </Link>
 
             <Link href="/room/test-setup" className="block bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow group">
               <div className="flex items-center gap-4">
                 <div className="bg-cyan-100 text-cyan-600 p-3 rounded-xl group-hover:bg-cyan-600 group-hover:text-white transition-colors">
-                  <Camera className="w-6 h-6"/>
+                  <Camera className="w-6 h-6" />
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-800">Probar Equipo</h4>
                   <p className="text-xs text-slate-500">Test de Cámara y Micrófono</p>
                 </div>
-                <ChevronRight className="ml-auto w-5 h-5 text-slate-300 group-hover:text-slate-500"/>
+                <ChevronRight className="ml-auto w-5 h-5 text-slate-300 group-hover:text-slate-500" />
               </div>
             </Link>
 
             <Link href="/dashboard/teacher/messages" className="block bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow group">
               <div className="flex items-center gap-4">
                 <div className="bg-blue-100 text-blue-600 p-3 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                  <MessageSquare className="w-6 h-6"/>
+                  <MessageSquare className="w-6 h-6" />
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-800">Mensajes</h4>
                   <p className="text-xs text-slate-500">Chatea con tus alumnos</p>
                 </div>
-                <ChevronRight className="ml-auto w-5 h-5 text-slate-300 group-hover:text-slate-500"/>
+                <ChevronRight className="ml-auto w-5 h-5 text-slate-300 group-hover:text-slate-500" />
               </div>
             </Link>
 
             <Link href="/dashboard/teacher/premiun" className="block bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow group">
               <div className="flex items-center gap-4">
                 <div className="bg-amber-100 text-amber-600 p-3 rounded-xl group-hover:bg-amber-600 group-hover:text-white transition-colors">
-                  <ShoppingBag className="w-6 h-6"/>
+                  <ShoppingBag className="w-6 h-6" />
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-800">Tienda Premium</h4>
                   <p className="text-xs text-slate-500">Mejora tus clases</p>
                 </div>
-                <ChevronRight className="ml-auto w-5 h-5 text-slate-300 group-hover:text-slate-500"/>
+                <ChevronRight className="ml-auto w-5 h-5 text-slate-300 group-hover:text-slate-500" />
               </div>
             </Link>
           </div>
@@ -469,7 +469,7 @@ export default function TeacherDashboard() {
                 <div className="text-2xl font-black leading-none">${stats.earnings.toFixed(2)}</div>
               </div>
               <button onClick={() => setShowPayoutModal(true)} className="bg-indigo-600 hover:bg-indigo-500 font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-1 transition-colors">
-                Cobrar <ChevronRight className="w-3 h-3"/>
+                Cobrar <ChevronRight className="w-3 h-3" />
               </button>
             </div>
           </div>
@@ -482,13 +482,13 @@ export default function TeacherDashboard() {
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h3 className="font-bold text-lg text-slate-900">Mis Recursos de Clase</h3>
               <button onClick={() => setShowResourceModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="w-5 h-5"/>
+                <X className="w-5 h-5" />
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
               {resources.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                  <UploadCloud className="w-16 h-16 mb-4 opacity-20"/>
+                  <UploadCloud className="w-16 h-16 mb-4 opacity-20" />
                   <p>No has subido archivos aún.</p>
                 </div>
               ) : (
@@ -496,7 +496,7 @@ export default function TeacherDashboard() {
                   {resources.map(file => (
                     <div key={file.id} className="bg-white p-3 rounded-xl border border-slate-200 hover:shadow-md transition-shadow group relative">
                       <div className="h-24 bg-slate-100 rounded-lg flex items-center justify-center mb-3 text-slate-400">
-                        {file.file_type === 'image' ? <Camera className="w-8 h-8"/> : <FileText className="w-8 h-8"/>}
+                        {file.file_type === 'image' ? <Camera className="w-8 h-8" /> : <FileText className="w-8 h-8" />}
                       </div>
                       <p className="text-xs font-bold text-slate-700 truncate" title={file.title}>{file.title}</p>
                       <p className="text-[10px] text-slate-400">{new Date(file.created_at).toLocaleDateString()}</p>
@@ -504,7 +504,7 @@ export default function TeacherDashboard() {
                         onClick={() => handleDeleteResource(file.id, file.file_url)}
                         className="absolute top-2 right-2 bg-white text-red-500 p-1.5 rounded-md shadow-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50"
                       >
-                        <Trash2 className="w-3 h-3"/>
+                        <Trash2 className="w-3 h-3" />
                       </button>
                     </div>
                   ))}
@@ -512,19 +512,19 @@ export default function TeacherDashboard() {
               )}
             </div>
             <div className="p-4 border-t border-slate-200 bg-white">
-              <input 
-                type="file" 
-                hidden 
-                ref={resourceInputRef} 
+              <input
+                type="file"
+                hidden
+                ref={resourceInputRef}
                 accept="image/*,application/pdf"
                 onChange={handleResourceUpload}
               />
-              <button 
-                onClick={() => resourceInputRef.current?.click()} 
+              <button
+                onClick={() => resourceInputRef.current?.click()}
                 disabled={uploadingResource}
                 className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
               >
-                {uploadingResource ? <Loader2 className="w-5 h-5 animate-spin"/> : <UploadCloud className="w-5 h-5"/>}
+                {uploadingResource ? <Loader2 className="w-5 h-5 animate-spin" /> : <UploadCloud className="w-5 h-5" />}
                 {uploadingResource ? 'Subiendo...' : 'Subir Nuevo Archivo (PDF o Imagen)'}
               </button>
             </div>
@@ -538,7 +538,7 @@ export default function TeacherDashboard() {
             <div className="flex justify-between mb-4">
               <h3 className="font-bold text-lg">Retirar Fondos</h3>
               <button onClick={() => setShowPayoutModal(false)}>
-                <X className="w-5 h-5"/>
+                <X className="w-5 h-5" />
               </button>
             </div>
             <p className="text-3xl font-black mb-6 text-center">${stats.earnings.toFixed(2)}</p>
@@ -546,23 +546,23 @@ export default function TeacherDashboard() {
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => setPayoutMethod('paypal')}
-                  className={`p-2 border rounded ${payoutMethod==='paypal'?'bg-indigo-50 border-indigo-600':''}`}
+                  className={`p-2 border rounded ${payoutMethod === 'paypal' ? 'bg-indigo-50 border-indigo-600' : ''}`}
                 >
                   PayPal
                 </button>
                 <button
                   onClick={() => setPayoutMethod('crypto')}
-                  className={`p-2 border rounded ${payoutMethod==='crypto'?'bg-indigo-50 border-indigo-600':''}`}
+                  className={`p-2 border rounded ${payoutMethod === 'crypto' ? 'bg-indigo-50 border-indigo-600' : ''}`}
                 >
                   Crypto
                 </button>
               </div>
               <input
                 type="text"
-                placeholder={payoutMethod==='paypal' ? 'Email PayPal' : 'Wallet Address'}
+                placeholder={payoutMethod === 'paypal' ? 'Email PayPal' : 'Wallet Address'}
                 className="w-full p-3 border rounded"
                 value={payoutAddress}
-                onChange={e=>setPayoutAddress(e.target.value)}
+                onChange={e => setPayoutAddress(e.target.value)}
               />
               <button
                 onClick={handleRequestPayout}

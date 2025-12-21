@@ -9,24 +9,24 @@ import Link from 'next/link'
 export default function StudentDashboard() {
   const router = useRouter()
   const [supabase] = useState(() => createClient())
-  
+
   const [loading, setLoading] = useState(true)
   const [calling, setCalling] = useState(false)
 
   // track current request id (lo seguimos guardando por logs, pero ya no se usa en el if)
   const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
-  
+
   const [studentName, setStudentName] = useState("Student")
   const [userEmail, setUserEmail] = useState("")
-  
+
   // ESTADOS REALES (Datos de BD)
   const [balance, setBalance] = useState(0.00)
   const [nextClass, setNextClass] = useState<any>(null)
   const [classesCount, setClassesCount] = useState(0)
-  
+
   // UI States
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
-  const [notifications, setNotifications] = useState<any[]>([]) 
+  const [notifications, setNotifications] = useState<any[]>([])
 
   // --- 1. CARGA INICIAL DE DATOS ---
   useEffect(() => {
@@ -34,7 +34,7 @@ export default function StudentDashboard() {
       try {
         // Verificar Usuario
         const { data: { user }, error } = await supabase.auth.getUser()
-        
+
         if (error || !user) {
           window.location.href = '/login'
           return
@@ -47,9 +47,9 @@ export default function StudentDashboard() {
           .select('first_name, last_name')
           .eq('id', user.id)
           .limit(1)
-        
+
         let profile = profileData?.[0]
-        
+
         if (!profile) {
           const { data: newProfile } = await supabase.from('profiles').insert({
             id: user.id,
@@ -58,7 +58,7 @@ export default function StudentDashboard() {
             first_name: 'Nuevo',
             last_name: 'Usuario',
             created_at: new Date()
-          }).select().single()
+          }).select().maybeSingle()
           profile = newProfile
         }
 
@@ -70,22 +70,22 @@ export default function StudentDashboard() {
           .select('balance')
           .eq('user_id', user.id)
           .limit(1)
-        
+
         let wallet = walletData?.[0]
-        
+
         if (!wallet) {
           const { data: newWallet } = await supabase.from('wallets').insert({
             user_id: user.id,
             balance: 0.00
-          }).select().single()
+          }).select().maybeSingle()
           wallet = newWallet
         }
-        
+
         if (wallet) setBalance(wallet.balance)
 
         // Obtener Clases - CORREGIDO: Usamos limit(1)
         const today = new Date().toISOString().split('T')[0]
-        
+
         const { data: upcomingData } = await supabase
           .from('bookings')
           .select('date, time, topic, meeting_link')
@@ -139,7 +139,7 @@ export default function StudentDashboard() {
             // CORRECCIÓN SINCRONIZACIÓN: Solo dependemos del nuevo estado 'accepted'
             if (payload.new.status === 'accepted') {
               const roomLink = payload.new.room_id
-              
+
               setNotifications(prev => [{
                 id: Date.now(),
                 title: 'Tutor connected',
@@ -148,7 +148,7 @@ export default function StudentDashboard() {
                 actionLink: roomLink,
                 type: 'urgent'
               }, ...prev])
-              
+
               setIsNotificationsOpen(true)
               setCalling(false)
 
@@ -157,8 +157,8 @@ export default function StudentDashboard() {
                 router.push(`/room/${roomLink}?autoJoin=1`)
               }
 
-              const audio = new Audio('/notification.mp3') 
-              audio.play().catch(() => {}) 
+              const audio = new Audio('/notification.mp3')
+              audio.play().catch(() => { })
             }
           }
         )
@@ -222,7 +222,7 @@ export default function StudentDashboard() {
         setCalling(false)
         return
       }
-      
+
       const targetTeacher = teachers[0]
 
       const uniqueRoomId = `instant-${user.id}-${Date.now().toString().slice(-4)}`
@@ -230,12 +230,12 @@ export default function StudentDashboard() {
       const { data: inserted, error } = await supabase.from('class_requests').insert({
         student_id: user.id,
         teacher_id: targetTeacher.id,
-        student_name: studentName, 
+        student_name: studentName,
         topic: "Instant Help",
         level: "General",
         room_id: uniqueRoomId,
         status: 'waiting'
-      }).select().single()
+      }).select().maybeSingle()
 
       if (error) throw error
 
@@ -300,8 +300,8 @@ export default function StudentDashboard() {
           </div>
           <div className="flex items-center gap-4">
             <button onClick={() => setIsNotificationsOpen(true)} className="p-3 bg-white rounded-full text-slate-500 hover:text-indigo-600 shadow-md border border-slate-200 relative transition-transform hover:scale-105">
-                <Bell className="w-5 h-5"/>
-                {notifications.length > 0 && <div className="absolute top-1 right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-pulse"></div>} 
+              <Bell className="w-5 h-5" />
+              {notifications.length > 0 && <div className="absolute top-1 right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-pulse"></div>}
             </button>
             <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 font-bold border shadow-sm">
               {studentName.charAt(0).toUpperCase()}
@@ -335,7 +335,7 @@ export default function StudentDashboard() {
                 disabled={calling}
                 className="bg-white text-indigo-700 p-3 rounded-full hover:bg-indigo-50 shadow-md transition-transform hover:scale-110 disabled:opacity-50 disabled:scale-100"
               >
-                {calling ? <Loader2 className="w-5 h-5 animate-spin"/> : <Zap className="w-5 h-5 fill-current"/>}
+                {calling ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5 fill-current" />}
               </button>
             </div>
             <div className="absolute -right-4 -bottom-8 opacity-20 rotate-12">
@@ -369,11 +369,10 @@ export default function StudentDashboard() {
             </div>
             <button
               onClick={goToClassroom}
-              className={`mt-4 px-8 py-4 font-bold rounded-xl shadow-lg flex items-center gap-2 transition-transform hover:scale-105 ${
-                nextClass
-                  ? "bg-green-600 hover:bg-green-700 text-white shadow-green-200 animate-pulse"
-                  : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200"
-              }`}
+              className={`mt-4 px-8 py-4 font-bold rounded-xl shadow-lg flex items-center gap-2 transition-transform hover:scale-105 ${nextClass
+                ? "bg-green-600 hover:bg-green-700 text-white shadow-green-200 animate-pulse"
+                : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200"
+                }`}
             >
               <Play className="w-5 h-5 fill-current" />{" "}
               {nextClass ? "JOIN CLASS NOW" : "TEST CLASSROOM NOW"}
@@ -411,11 +410,10 @@ export default function StudentDashboard() {
                 notifications.map((notif) => (
                   <div
                     key={notif.id}
-                    className={`p-4 rounded-xl border shadow-sm transition-all hover:shadow-md ${
-                      notif.type === "urgent"
-                        ? "bg-green-50 border-green-200"
-                        : "bg-white border-slate-200"
-                    }`}
+                    className={`p-4 rounded-xl border shadow-sm transition-all hover:shadow-md ${notif.type === "urgent"
+                      ? "bg-green-50 border-green-200"
+                      : "bg-white border-slate-200"
+                      }`}
                   >
                     <div className="flex justify-between items-start mb-1">
                       <p className={`text-sm font-bold ${notif.type === "urgent" ? "text-green-800" : "text-slate-800"}`}>
