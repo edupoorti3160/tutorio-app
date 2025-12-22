@@ -36,7 +36,7 @@ const SUPPORTED_LANGUAGES = [
 export default function Classroom() {
     const params = useParams()
     const router = useRouter()
-    const roomId = params.roomid
+    const roomId = params.roomId // CORREGIDO: roomId suele venir como roomId, no roomid
     const [supabase] = useState(() => createClient())
     const [autoJoin, setAutoJoin] = useState(false)
 
@@ -103,7 +103,7 @@ export default function Classroom() {
     const recognitionRef = useRef<any>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null)
 
-    // WebRTC - CORREGIDO: Solo se activa cuando el rol y el ID están definidos para evitar desincronización
+    // WebRTC
     const isInitiator = userRole === 'teacher';
     const { localStream, remoteStream, isConnected } = useWebRTC(
         (hasJoined && !isRoleLoading && userId) ? (roomId as string) : '', 
@@ -116,7 +116,7 @@ export default function Classroom() {
         student: { joinBtn: 'Join Class', labelRemote: 'Tutor', labelLocal: 'You', placeholder: 'Type...', translateBtn: 'ACTIVATE VOICE', translatingBtn: 'LISTENING...', exit: 'LEAVE', resourcesTitle: 'Library' }
     }
 
-    // --- 1. ROL Y DATOS ---
+    // --- 1. ROL Y DATOS (CORREGIDO PARA EVITAR 406 EN INSTANT CALL) ---
     useEffect(() => {
         const fetchUserRoleAndBooking = async () => {
             setIsRoleLoading(true);
@@ -126,24 +126,49 @@ export default function Classroom() {
                     setUserRole('student');
                 } else {
                     setUserId(user.id);
-                    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+                    // CORRECCIÓN: .limit(1) para evitar 406
+                    const { data: profileData } = await supabase.from('profiles').select('role').eq('id', user.id).limit(1);
+                    const profile = profileData?.[0];
+                    
                     const role = (profile?.role || 'student') as 'teacher' | 'student';
                     setUserRole(role);
 
                     // Configurar idiomas por defecto según rol
                     if (role === 'teacher') {
                         setSourceLang('es'); setTargetLang('en');
-                        const { data: booking } = await supabase.from('bookings').select('*').eq('teacher_id', user.id).eq('status', 'confirmed').order('time', { ascending: true }).limit(1).single()
-                        if (booking) setBookingDetails(booking)
+                        
+                        // CORRECCIÓN CRÍTICA: Solo buscar booking si NO es una llamada instantánea
+                        const isInstantCall = (roomId as string)?.startsWith('instant-');
+                        
+                        if (!isInstantCall) {
+                            // Usamos .limit(1) para evitar 406 si no hay reservas
+                            const { data: bookingData } = await supabase.from('bookings')
+                                .select('*')
+                                .eq('teacher_id', user.id)
+                                .eq('status', 'confirmed')
+                                .order('time', { ascending: true })
+                                .limit(1);
+                            
+                            if (bookingData && bookingData.length > 0) {
+                                setBookingDetails(bookingData[0]);
+                            }
+                        } else {
+                             // Es llamada instantánea, no hay booking que cobrar por ahora
+                             console.log("Instant Call detected, skipping booking fetch");
+                        }
+
                     } else {
                         setSourceLang('en'); setTargetLang('es');
                     }
                 }
-            } catch (error) { console.error("Error:", error); } 
+            } catch (error) { console.error("Error fetching role:", error); } 
             finally { setIsRoleLoading(false); }
         }
-        fetchUserRoleAndBooking()
-    }, [supabase, router])
+        
+        if (roomId) {
+            fetchUserRoleAndBooking()
+        }
+    }, [supabase, router, roomId])
 
     // --- 2. RECURSOS ---
     useEffect(() => {
@@ -351,7 +376,10 @@ export default function Classroom() {
             const total = Number(bookingDetails.price_paid || 0);
             const earn = total * 0.80; 
             await supabase.from('bookings').update({ status: 'completed' }).eq('id', bookingDetails.id);
-            const { data: wallet } = await supabase.from('wallets').select('balance').eq('user_id', userId).single();
+            // Corregido .single() -> .limit(1) para evitar 406
+            const { data: walletData } = await supabase.from('wallets').select('balance').eq('user_id', userId).limit(1);
+            const wallet = walletData?.[0];
+            
             await supabase.from('wallets').update({ balance: (Number(wallet?.balance || 0) + earn) }).eq('user_id', userId);
             alert(`✅ Clase terminada.`);
             router.push('/dashboard/teacher');
@@ -410,7 +438,7 @@ export default function Classroom() {
     return (
         <div className="h-screen bg-slate-100 flex flex-col font-sans overflow-hidden">
             {/* HEADER MEJORADO */}
-            <header className="h-16 bg-white border-b border-slate-200 flex items_center justify-between px-6 shrink-0 z-10 shadow-sm">
+            <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 z-10 shadow-sm">
                 <div className="flex items-center gap-3">
                     <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`}/>
                     
