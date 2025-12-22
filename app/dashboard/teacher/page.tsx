@@ -34,7 +34,8 @@ export default function TeacherDashboard() {
   // Estados Pagos
   const [showPayoutModal, setShowPayoutModal] = useState(false)
   const [payoutLoading, setPayoutLoading] = useState(false)
-  const [payoutMethod, setPayoutMethod] = useState<'paypal' | 'crypto'>('paypal')
+  // Actualizado para soportar los nuevos métodos
+  const [payoutMethod, setPayoutMethod] = useState<'paypal' | 'usdt' | 'usdc'>('paypal')
   const [payoutAddress, setPayoutAddress] = useState('')
 
   // Estados Recursos
@@ -59,7 +60,6 @@ export default function TeacherDashboard() {
         setUser(user)
 
         // 1. Perfil - ROBUST FETCHING
-        // Change: .maybeSingle() -> .select().limit(1) to avoid 406 Not Acceptable if duplicates exist
         const { data: profileList } = await supabase
           .from('profiles')
           .select('*')
@@ -143,7 +143,6 @@ export default function TeacherDashboard() {
     if (!incomingRequest || !user) return
 
     try {
-      // Intentamos actualizar. Si la DB tiene las políticas correctas (Paso 1), esto funcionará.
       const { data, error } = await supabase
         .from('class_requests')
         .update({
@@ -155,7 +154,6 @@ export default function TeacherDashboard() {
 
       if (error) throw error;
 
-      // Redirigir a la sala
       router.push(`/room/${incomingRequest.roomId}?autoJoin=1`)
 
     } catch (error: any) {
@@ -210,13 +208,36 @@ export default function TeacherDashboard() {
 
   // --- FUNCIONES PAGOS ---
   const handleRequestPayout = async () => {
-    if (!payoutAddress) return alert("Ingresa una cuenta")
+    // RESTRICCIÓN DE DÍA SÁBADO
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0 = Domingo, 6 = Sábado
+
+    if (dayOfWeek !== 6) {
+      return alert("🚫 Los retiros solo están permitidos los días Sábados.");
+    }
+
+    if (!payoutAddress) return alert("Ingresa una cuenta válida")
+    
+    // Validación extra para Crypto
+    if ((payoutMethod === 'usdt' || payoutMethod === 'usdc') && !payoutAddress.startsWith('0x')) {
+       return alert("⚠️ Para Crypto, asegúrate de usar una dirección BEP20 (Smart Chain) que inicie con '0x'.")
+    }
+
     setPayoutLoading(true)
     try {
-      await supabase.from('payout_requests').insert({ teacher_id: user.id, amount: stats.earnings, method: payoutMethod, payment_address: payoutAddress })
-      alert('Solicitud enviada'); setShowPayoutModal(false)
+      await supabase.from('payout_requests').insert({ 
+        teacher_id: user.id, 
+        amount: stats.earnings, 
+        method: payoutMethod, // paypal, usdt, usdc
+        payment_address: payoutAddress 
+      })
+      alert('✅ Solicitud enviada exitosamente. El pago se procesará en breve.'); 
+      setShowPayoutModal(false)
     } catch (e: any) { alert(e.message) } finally { setPayoutLoading(false) }
   }
+
+  // Helper para verificar si es sábado (para la UI)
+  const isSaturday = new Date().getDay() === 6;
 
   // --- SUBIDA DE RECURSOS ---
   const handleResourceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -543,43 +564,104 @@ export default function TeacherDashboard() {
       )}
 
       {showPayoutModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-            <div className="flex justify-between mb-4">
-              <h3 className="font-bold text-lg">Retirar Fondos</h3>
-              <button onClick={() => setShowPayoutModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden">
+            {/* Header del Modal */}
+            <div className="bg-slate-50 p-6 border-b border-slate-100 flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-xl text-slate-900">Retirar Fondos</h3>
+                <p className="text-xs text-slate-500">Selecciona tu método de pago preferido</p>
+              </div>
+              <button onClick={() => setShowPayoutModal(false)} className="p-2 bg-white rounded-full text-slate-400 hover:text-slate-600 shadow-sm border border-slate-100">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <p className="text-3xl font-black mb-6 text-center">${stats.earnings.toFixed(2)}</p>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setPayoutMethod('paypal')}
-                  className={`p-2 border rounded ${payoutMethod === 'paypal' ? 'bg-indigo-50 border-indigo-600' : ''}`}
-                >
-                  PayPal
-                </button>
-                <button
-                  onClick={() => setPayoutMethod('crypto')}
-                  className={`p-2 border rounded ${payoutMethod === 'crypto' ? 'bg-indigo-50 border-indigo-600' : ''}`}
-                >
-                  Crypto
-                </button>
+
+            <div className="p-6 space-y-6">
+              {/* Alerta de Sábado */}
+              {!isSaturday && (
+                <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex gap-3 items-start">
+                   <div className="bg-red-100 p-1.5 rounded-full text-red-600 mt-0.5">
+                      <Clock className="w-4 h-4"/>
+                   </div>
+                   <div>
+                      <h4 className="text-sm font-bold text-red-700">Retiros Cerrados</h4>
+                      <p className="text-xs text-red-600 mt-0.5">Por seguridad, los retiros solo están habilitados los días <span className="font-black underline">Sábados</span>.</p>
+                   </div>
+                </div>
+              )}
+
+              {/* Display de Monto */}
+              <div className="text-center py-2">
+                <p className="text-sm text-slate-400 font-medium uppercase tracking-wider mb-1">Monto Disponible</p>
+                <p className="text-4xl font-black text-slate-900">${stats.earnings.toFixed(2)}</p>
               </div>
-              <input
-                type="text"
-                placeholder={payoutMethod === 'paypal' ? 'Email PayPal' : 'Wallet Address'}
-                className="w-full p-3 border rounded"
-                value={payoutAddress}
-                onChange={e => setPayoutAddress(e.target.value)}
-              />
+
+              {/* Selección de Método */}
+              <div className="grid grid-cols-3 gap-3">
+                 <button 
+                    onClick={() => setPayoutMethod('usdt')}
+                    className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border-2 transition-all ${payoutMethod === 'usdt' ? 'border-green-500 bg-green-50 text-green-700' : 'border-slate-100 hover:border-green-200 text-slate-500'}`}
+                 >
+                    <div className={`p-2 rounded-full ${payoutMethod === 'usdt' ? 'bg-green-200 text-green-700' : 'bg-slate-100'}`}>
+                        <Wallet className="w-5 h-5"/>
+                    </div>
+                    <span className="text-xs font-bold">USDT</span>
+                 </button>
+
+                 <button 
+                    onClick={() => setPayoutMethod('usdc')}
+                    className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border-2 transition-all ${payoutMethod === 'usdc' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-100 hover:border-blue-200 text-slate-500'}`}
+                 >
+                    <div className={`p-2 rounded-full ${payoutMethod === 'usdc' ? 'bg-blue-200 text-blue-700' : 'bg-slate-100'}`}>
+                        <Wallet className="w-5 h-5"/>
+                    </div>
+                    <span className="text-xs font-bold">USDC</span>
+                 </button>
+
+                 <button 
+                    onClick={() => setPayoutMethod('paypal')}
+                    className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border-2 transition-all ${payoutMethod === 'paypal' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-100 hover:border-indigo-200 text-slate-500'}`}
+                 >
+                    <div className={`p-2 rounded-full ${payoutMethod === 'paypal' ? 'bg-indigo-200 text-indigo-700' : 'bg-slate-100'}`}>
+                        <DollarSign className="w-5 h-5"/>
+                    </div>
+                    <span className="text-xs font-bold">PayPal</span>
+                 </button>
+              </div>
+
+              {/* Input y Advertencias */}
+              <div className="space-y-3">
+                 {(payoutMethod === 'usdt' || payoutMethod === 'usdc') && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 flex items-start gap-2">
+                       <span className="text-lg">⚠️</span>
+                       <p className="font-medium leading-relaxed">
+                          ¡Atención! Usa únicamente direcciones de la red <span className="font-black">BEP20 (Binance Smart Chain)</span>. Enviar a otra red resultará en la pérdida permanente de fondos.
+                       </p>
+                    </div>
+                 )}
+
+                 <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 ml-1">
+                       {payoutMethod === 'paypal' ? 'Correo de PayPal' : 'Dirección de Billetera (0x...)'}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={payoutMethod === 'paypal' ? 'ejemplo@correo.com' : '0x...'}
+                      className="w-full p-4 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all font-mono text-sm"
+                      value={payoutAddress}
+                      onChange={e => setPayoutAddress(e.target.value)}
+                    />
+                 </div>
+              </div>
+
+              {/* Botón de Acción */}
               <button
                 onClick={handleRequestPayout}
-                disabled={payoutLoading}
-                className="w-full bg-indigo-600 text-white font-bold py-3 rounded"
+                disabled={payoutLoading || !isSaturday}
+                className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-slate-200"
               >
-                {payoutLoading ? 'Procesando...' : 'Confirmar'}
+                {payoutLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isSaturday ? 'Confirmar Retiro' : 'Vuelve el Sábado')}
               </button>
             </div>
           </div>
