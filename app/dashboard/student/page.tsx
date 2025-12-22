@@ -142,7 +142,7 @@ export default function StudentDashboard() {
             table: 'class_requests',
             filter: `student_id=eq.${user.id}`
           },
-          (payload) => {
+          (payload: any) => {
             console.log('🔔 RECEIVED REALTIME UPDATE:', payload)
 
             // CORRECCIÓN SINCRONIZACIÓN: Solo dependemos del nuevo estado 'accepted'
@@ -183,7 +183,7 @@ export default function StudentDashboard() {
             table: 'bookings',
             filter: `student_id=eq.${user.id}`
           },
-          (payload) => {
+          (payload: any) => {
             console.log('🔔 RECEIVED BOOKING:', payload)
             if (payload.new.status === 'confirmed') {
               setNotifications(prev => [{
@@ -196,7 +196,7 @@ export default function StudentDashboard() {
             }
           }
         )
-        .subscribe((status, err) => {
+        .subscribe((status: any, err: any) => {
           console.log("Student Channel Status:", status, err)
         })
 
@@ -231,22 +231,16 @@ export default function StudentDashboard() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      const { data: teachers } = await supabase.from('profiles').select('id, first_name').eq('role', 'teacher').limit(1)
-
-      if (!teachers || teachers.length === 0) {
-        alert("No tutors are available right now.")
-        setCalling(false)
-        return
-      }
-
-      const targetTeacher = teachers[0]
+      // BROADCAST MODE: No target teacher initially.
+      // We send the request with teacher_id = null (or handled by RLS to be visible to all teachers)
+      // The SQL update allows null teacher_id.
 
       const uniqueRoomId = `instant-${user.id}-${Date.now().toString().slice(-4)}`
 
-      // Usamos select().limit(1) para evitar problemas si retornara multiple (que no deberia en insert, pero consistencia)
+      // Usamos select().limit(1) para consistencia
       const { data: insertedData, error } = await supabase.from('class_requests').insert({
         student_id: user.id,
-        teacher_id: targetTeacher.id,
+        teacher_id: null, // Broadcast to all teachers
         student_name: studentName,
         topic: "Instant Help",
         level: "General",
@@ -257,14 +251,14 @@ export default function StudentDashboard() {
       if (error) throw error
 
       const inserted = insertedData?.[0]
-      console.log('STUDENT created request', inserted)
+      console.log('STUDENT created broadcast request', inserted)
 
       setCurrentRequestId(inserted.id)
 
       setNotifications(prev => [{
         id: Date.now(),
         title: 'Request sent',
-        message: `Waiting for ${targetTeacher.first_name} to join your instant class.`,
+        message: `Waiting for a tutor to join your instant class.`,
         type: 'info'
       }, ...prev])
       setIsNotificationsOpen(true)
