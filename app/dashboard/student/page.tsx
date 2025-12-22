@@ -41,7 +41,8 @@ export default function StudentDashboard() {
         }
         setUserEmail(user.email || "")
 
-        // Obtener/Crear Perfil - CORREGIDO: Usamos limit(1) para evitar el error 406
+        // Obtener/Crear Perfil - ROBUST FETCHING
+        // Usamos .limit(1) y tomamos el primero para evitar errores 406 si hay duplicados
         let { data: profileData } = await supabase
           .from('profiles')
           .select('first_name, last_name')
@@ -51,6 +52,8 @@ export default function StudentDashboard() {
         let profile = profileData?.[0]
 
         if (!profile) {
+          // Si no existe, creamos.
+          // NOTA: Usamos select().limit(1) en el insert también por si acaso (aunque insert retorna 1 row usualmente)
           const { data: newProfile } = await supabase.from('profiles').insert({
             id: user.id,
             email: user.email,
@@ -58,13 +61,14 @@ export default function StudentDashboard() {
             first_name: 'Nuevo',
             last_name: 'Usuario',
             created_at: new Date()
-          }).select().maybeSingle()
-          profile = newProfile
+          }).select().limit(1)
+
+          if (newProfile && newProfile.length > 0) profile = newProfile[0]
         }
 
         if (profile) setStudentName(`${profile.first_name}`)
 
-        // Obtener/Crear Billetera - CORREGIDO: Usamos limit(1)
+        // Obtener/Crear Billetera - ROBUST FETCHING
         let { data: walletData } = await supabase
           .from('wallets')
           .select('balance')
@@ -77,13 +81,14 @@ export default function StudentDashboard() {
           const { data: newWallet } = await supabase.from('wallets').insert({
             user_id: user.id,
             balance: 0.00
-          }).select().maybeSingle()
-          wallet = newWallet
+          }).select().limit(1)
+
+          if (newWallet && newWallet.length > 0) wallet = newWallet[0]
         }
 
         if (wallet) setBalance(wallet.balance)
 
-        // Obtener Clases - CORREGIDO: Usamos limit(1)
+        // Obtener Clases
         const today = new Date().toISOString().split('T')[0]
 
         const { data: upcomingData } = await supabase
@@ -117,11 +122,15 @@ export default function StudentDashboard() {
 
   // --- 2. ESCUCHA EN TIEMPO REAL (NOTIFICACIONES) ---
   useEffect(() => {
+    let channel: any;
+
     const setupRealtime = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      const channel = supabase.channel('student-dashboard-realtime')
+      console.log("🟢 Setting up Realtime Subscription for Student:", user.id)
+
+      channel = supabase.channel('student-dashboard-realtime')
 
       channel
         // A) Cualquier UPDATE de class_requests de este estudiante
@@ -134,11 +143,12 @@ export default function StudentDashboard() {
             filter: `student_id=eq.${user.id}`
           },
           (payload) => {
-            console.log('STUDENT UPDATE payload', payload)
+            console.log('🔔 RECEIVED REALTIME UPDATE:', payload)
 
             // CORRECCIÓN SINCRONIZACIÓN: Solo dependemos del nuevo estado 'accepted'
             if (payload.new.status === 'accepted') {
               const roomLink = payload.new.room_id
+              console.log("✅ Request ACCEPTED! Room:", roomLink)
 
               setNotifications(prev => [{
                 id: Date.now(),
@@ -151,9 +161,11 @@ export default function StudentDashboard() {
 
               setIsNotificationsOpen(true)
               setCalling(false)
+              setCurrentRequestId(null) // Limpiar estado
 
               if (roomLink) {
-                // Redirección inmediata con autoJoin
+                // Redirección inmediata
+                console.log("🚀 Auto-joining room...")
                 router.push(`/room/${roomLink}?autoJoin=1`)
               }
 
@@ -172,6 +184,7 @@ export default function StudentDashboard() {
             filter: `student_id=eq.${user.id}`
           },
           (payload) => {
+            console.log('🔔 RECEIVED BOOKING:', payload)
             if (payload.new.status === 'confirmed') {
               setNotifications(prev => [{
                 id: Date.now(),
@@ -183,14 +196,17 @@ export default function StudentDashboard() {
             }
           }
         )
-        .subscribe()
+        .subscribe((status, err) => {
+          console.log("Student Channel Status:", status, err)
+        })
 
-      return () => {
-        supabase.removeChannel(channel)
-      }
     }
     setupRealtime()
-  }, [supabase, router, currentRequestId])
+
+    return () => {
+      if (channel) supabase.removeChannel(channel)
+    }
+  }, [supabase, router]) // Removed currentRequestId dep to prevent re-subscriptions
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -227,7 +243,8 @@ export default function StudentDashboard() {
 
       const uniqueRoomId = `instant-${user.id}-${Date.now().toString().slice(-4)}`
 
-      const { data: inserted, error } = await supabase.from('class_requests').insert({
+      // Usamos select().limit(1) para evitar problemas si retornara multiple (que no deberia en insert, pero consistencia)
+      const { data: insertedData, error } = await supabase.from('class_requests').insert({
         student_id: user.id,
         teacher_id: targetTeacher.id,
         student_name: studentName,
@@ -235,10 +252,11 @@ export default function StudentDashboard() {
         level: "General",
         room_id: uniqueRoomId,
         status: 'waiting'
-      }).select().maybeSingle()
+      }).select().limit(1)
 
       if (error) throw error
 
+      const inserted = insertedData?.[0]
       console.log('STUDENT created request', inserted)
 
       setCurrentRequestId(inserted.id)

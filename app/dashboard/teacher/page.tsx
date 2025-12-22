@@ -58,8 +58,16 @@ export default function TeacherDashboard() {
         if (!user) { router.push('/login'); return }
         setUser(user)
 
-        // 1. Perfil - CORREGIDO: Usamos maybeSingle para evitar el error 406 si no existe
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+        // 1. Perfil - ROBUST FETCHING
+        // Change: .maybeSingle() -> .select().limit(1) to avoid 406 Not Acceptable if duplicates exist
+        const { data: profileList } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .limit(1)
+
+        const profile = profileList?.[0]
+
         if (profile) {
           setProfileData({
             first_name: profile.first_name || '', last_name: profile.last_name || '',
@@ -69,19 +77,21 @@ export default function TeacherDashboard() {
           })
         }
 
-        // 2. Agenda Hoy - CORREGIDO: Eliminamos restricciones estrictas que causan 406
+        // 2. Agenda Hoy
         const today = new Date().toISOString().split('T')[0]
         const { data: bookings, count } = await supabase.from('bookings')
           .select(`id, date, time, status, topic, meeting_link, student:profiles!student_id(first_name, last_name)`, { count: 'exact' })
           .eq('teacher_id', user.id).gte('date', today).order('time', { ascending: true })
 
-        // 3. Ganancias - CORREGIDO: Usamos maybeSingle
+        // 3. Ganancias - ROBUST FETCHING
         let totalEarnings = 0;
-        const { data: wallet } = await supabase
+        const { data: walletList } = await supabase
           .from('wallets')
           .select('balance')
           .eq('user_id', user.id)
-          .maybeSingle();
+          .limit(1);
+
+        const wallet = walletList?.[0]
 
         if (wallet) {
           totalEarnings = Number(wallet.balance) || 0;
