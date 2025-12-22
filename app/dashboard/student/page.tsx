@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { BookOpen, Video, CreditCard, LogOut, User, Loader2, Play, Search, MessageSquare, Bell, X, Zap, Calendar } from 'lucide-react'
@@ -9,51 +9,43 @@ import Link from 'next/link'
 export default function StudentDashboard() {
   const router = useRouter()
   const [supabase] = useState(() => createClient())
-
+  
   const [loading, setLoading] = useState(true)
   const [calling, setCalling] = useState(false)
 
-  // track current request id (lo seguimos guardando por logs, pero ya no se usa en el if)
   const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
-
+  
   const [studentName, setStudentName] = useState("Student")
   const [userEmail, setUserEmail] = useState("")
-
-  // ESTADOS REALES (Datos de BD)
+  
   const [balance, setBalance] = useState(0.00)
   const [nextClass, setNextClass] = useState<any>(null)
   const [classesCount, setClassesCount] = useState(0)
-
-  // UI States
+  
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
-  const [notifications, setNotifications] = useState<any[]>([])
+  const [notifications, setNotifications] = useState<any[]>([]) 
 
   // --- 1. CARGA INICIAL DE DATOS ---
   useEffect(() => {
     const initDashboard = async () => {
       try {
-        // Verificar Usuario
         const { data: { user }, error } = await supabase.auth.getUser()
-
         if (error || !user) {
           window.location.href = '/login'
           return
         }
         setUserEmail(user.email || "")
 
-        // Obtener/Crear Perfil - ROBUST FETCHING
-        // Usamos .limit(1) y tomamos el primero para evitar errores 406 si hay duplicados
+        // .limit(1) para evitar errores 406
         let { data: profileData } = await supabase
           .from('profiles')
           .select('first_name, last_name')
           .eq('id', user.id)
           .limit(1)
-
+        
         let profile = profileData?.[0]
-
+        
         if (!profile) {
-          // Si no existe, creamos.
-          // NOTA: Usamos select().limit(1) en el insert también por si acaso (aunque insert retorna 1 row usualmente)
           const { data: newProfile } = await supabase.from('profiles').insert({
             id: user.id,
             email: user.email,
@@ -61,36 +53,32 @@ export default function StudentDashboard() {
             first_name: 'Nuevo',
             last_name: 'Usuario',
             created_at: new Date()
-          }).select().limit(1)
-
-          if (newProfile && newProfile.length > 0) profile = newProfile[0]
+          }).select().single()
+          profile = newProfile
         }
 
         if (profile) setStudentName(`${profile.first_name}`)
 
-        // Obtener/Crear Billetera - ROBUST FETCHING
+        // .limit(1) para evitar errores 406
         let { data: walletData } = await supabase
           .from('wallets')
           .select('balance')
           .eq('user_id', user.id)
           .limit(1)
-
+        
         let wallet = walletData?.[0]
-
+        
         if (!wallet) {
           const { data: newWallet } = await supabase.from('wallets').insert({
             user_id: user.id,
             balance: 0.00
-          }).select().limit(1)
-
-          if (newWallet && newWallet.length > 0) wallet = newWallet[0]
+          }).select().single()
+          wallet = newWallet
         }
-
+        
         if (wallet) setBalance(wallet.balance)
 
-        // Obtener Clases
         const today = new Date().toISOString().split('T')[0]
-
         const { data: upcomingData } = await supabase
           .from('bookings')
           .select('date, time, topic, meeting_link')
@@ -117,23 +105,18 @@ export default function StudentDashboard() {
       }
     }
 
-    initDashboard()
+    initDashboard().catch(console.error)
   }, [router, supabase])
 
-  // --- 2. ESCUCHA EN TIEMPO REAL (NOTIFICACIONES) ---
+  // --- 2. CONFIGURACIÓN REALTIME (Plan A) ---
   useEffect(() => {
-    let channel: any;
-
     const setupRealtime = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      console.log("🟢 Setting up Realtime Subscription for Student:", user.id)
-
-      channel = supabase.channel('student-dashboard-realtime')
+      const channel = supabase.channel('student-dashboard-realtime')
 
       channel
-        // A) Cualquier UPDATE de class_requests de este estudiante
         .on(
           'postgres_changes',
           {
@@ -142,71 +125,75 @@ export default function StudentDashboard() {
             table: 'class_requests',
             filter: `student_id=eq.${user.id}`
           },
-          (payload: any) => {
-            console.log('🔔 RECEIVED REALTIME UPDATE:', payload)
-
-            // CORRECCIÓN SINCRONIZACIÓN: Solo dependemos del nuevo estado 'accepted'
+          (payload) => {
+            console.log('REALTIME UPDATE RECEIVED:', payload)
             if (payload.new.status === 'accepted') {
-              const roomLink = payload.new.room_id
-              console.log("✅ Request ACCEPTED! Room:", roomLink)
-
-              setNotifications(prev => [{
-                id: Date.now(),
-                title: 'Tutor connected',
-                message: 'Your instant help request was accepted.',
-                actionLabel: 'JOIN CLASS NOW',
-                actionLink: roomLink,
-                type: 'urgent'
-              }, ...prev])
-
-              setIsNotificationsOpen(true)
-              setCalling(false)
-              setCurrentRequestId(null) // Limpiar estado
-
-              if (roomLink) {
-                // Redirección inmediata
-                console.log("🚀 Auto-joining room...")
-                router.push(`/room/${roomLink}?autoJoin=1`)
-              }
-
-              const audio = new Audio('/notification.mp3')
-              audio.play().catch(() => { })
+               handleRequestAccepted(payload.new.room_id)
             }
           }
         )
-        // B) Nuevas reservas confirmadas
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'bookings',
-            filter: `student_id=eq.${user.id}`
-          },
-          (payload: any) => {
-            console.log('🔔 RECEIVED BOOKING:', payload)
-            if (payload.new.status === 'confirmed') {
-              setNotifications(prev => [{
-                id: Date.now(),
-                title: 'New class confirmed',
-                message: `Class scheduled for ${payload.new.date} at ${payload.new.time}`,
-                type: 'info'
-              }, ...prev])
-              setIsNotificationsOpen(true)
-            }
-          }
-        )
-        .subscribe((status: any, err: any) => {
-          console.log("Student Channel Status:", status, err)
-        })
+        .subscribe()
 
+      return () => {
+        supabase.removeChannel(channel)
+      }
     }
     setupRealtime()
+  }, [supabase, router]) // Quitamos currentRequestId de dependencias para no reiniciar el canal
+
+  // --- 3. NUEVO: POLLING DE SEGURIDAD (Plan B - "Si no me llaman, yo pregunto") ---
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    if (calling && currentRequestId) {
+        console.log("Iniciando Polling para request:", currentRequestId);
+        
+        // Preguntar cada 2 segundos si ya me aceptaron
+        intervalId = setInterval(async () => {
+            const { data, error } = await supabase
+                .from('class_requests')
+                .select('status, room_id')
+                .eq('id', currentRequestId)
+                .maybeSingle();
+
+            if (data && data.status === 'accepted') {
+                console.log("Polling detectó aceptación!");
+                clearInterval(intervalId); // Dejar de preguntar
+                handleRequestAccepted(data.room_id);
+            }
+        }, 2000); 
+    }
 
     return () => {
-      if (channel) supabase.removeChannel(channel)
+        if (intervalId) clearInterval(intervalId);
     }
-  }, [supabase, router]) // Removed currentRequestId dep to prevent re-subscriptions
+  }, [calling, currentRequestId, supabase]);
+
+
+  // Función auxiliar para manejar la redirección
+  const handleRequestAccepted = (roomId: string) => {
+    // Evitar redirecciones dobles
+    if (!calling) return; 
+
+    setNotifications(prev => [{
+        id: Date.now(),
+        title: 'Tutor connected!',
+        message: 'Your instant help request was accepted.',
+        actionLabel: 'JOIN CLASS NOW',
+        actionLink: roomId,
+        type: 'urgent'
+      }, ...prev])
+      
+      setIsNotificationsOpen(true)
+      setCalling(false) // Esto detiene el polling también
+
+      if (roomId) {
+        const audio = new Audio('/notification.mp3') 
+        audio.play().catch(() => {}) 
+        router.push(`/room/${roomId}?autoJoin=1`)
+      }
+  }
+
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -226,39 +213,34 @@ export default function StudentDashboard() {
   }
 
   const handleInstantCall = async () => {
+    if (calling) return; 
     setCalling(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // BROADCAST MODE: No target teacher initially.
-      // We send the request with teacher_id = null (or handled by RLS to be visible to all teachers)
-      // The SQL update allows null teacher_id.
-
+      // MODO BROADCAST (UBER): teacher_id es null para que lo vean todos
       const uniqueRoomId = `instant-${user.id}-${Date.now().toString().slice(-4)}`
 
-      // Usamos select().limit(1) para consistencia
-      const { data: insertedData, error } = await supabase.from('class_requests').insert({
+      const { data: inserted, error } = await supabase.from('class_requests').insert({
         student_id: user.id,
-        teacher_id: null, // Broadcast to all teachers
-        student_name: studentName,
+        teacher_id: null, // Broadcast
+        student_name: studentName, 
         topic: "Instant Help",
         level: "General",
         room_id: uniqueRoomId,
         status: 'waiting'
-      }).select().limit(1)
+      }).select().single()
 
       if (error) throw error
 
-      const inserted = insertedData?.[0]
       console.log('STUDENT created broadcast request', inserted)
-
-      setCurrentRequestId(inserted.id)
+      setCurrentRequestId(inserted.id) // Esto activa el Polling automáticamente
 
       setNotifications(prev => [{
         id: Date.now(),
         title: 'Request sent',
-        message: `Waiting for a tutor to join your instant class.`,
+        message: `Waiting for a tutor to join...`,
         type: 'info'
       }, ...prev])
       setIsNotificationsOpen(true)
@@ -312,8 +294,8 @@ export default function StudentDashboard() {
           </div>
           <div className="flex items-center gap-4">
             <button onClick={() => setIsNotificationsOpen(true)} className="p-3 bg-white rounded-full text-slate-500 hover:text-indigo-600 shadow-md border border-slate-200 relative transition-transform hover:scale-105">
-              <Bell className="w-5 h-5" />
-              {notifications.length > 0 && <div className="absolute top-1 right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-pulse"></div>}
+                <Bell className="w-5 h-5"/>
+                {notifications.length > 0 && <div className="absolute top-1 right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-pulse"></div>} 
             </button>
             <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 font-bold border shadow-sm">
               {studentName.charAt(0).toUpperCase()}
@@ -347,9 +329,14 @@ export default function StudentDashboard() {
                 disabled={calling}
                 className="bg-white text-indigo-700 p-3 rounded-full hover:bg-indigo-50 shadow-md transition-transform hover:scale-110 disabled:opacity-50 disabled:scale-100"
               >
-                {calling ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5 fill-current" />}
+                {calling ? <Loader2 className="w-5 h-5 animate-spin"/> : <Zap className="w-5 h-5 fill-current"/>}
               </button>
             </div>
+            {calling && (
+                <div className="relative z-10 mt-2">
+                    <p className="text-xs text-indigo-100 animate-pulse font-bold">Waiting for tutor... (Checking status)</p>
+                </div>
+            )}
             <div className="absolute -right-4 -bottom-8 opacity-20 rotate-12">
               <Video className="w-24 h-24" />
             </div>
@@ -373,7 +360,7 @@ export default function StudentDashboard() {
               ) : (
                 <>
                   <h3 className="text-lg font-medium text-slate-900">No classes scheduled right now</h3>
-                  <p className="text-slate-500 max-w-sm mx-auto">
+                  <p className="text-slate-500 max-w-sm mx_auto">
                     Book a class or use the "Instant Help" button above.
                   </p>
                 </>
@@ -381,10 +368,11 @@ export default function StudentDashboard() {
             </div>
             <button
               onClick={goToClassroom}
-              className={`mt-4 px-8 py-4 font-bold rounded-xl shadow-lg flex items-center gap-2 transition-transform hover:scale-105 ${nextClass
-                ? "bg-green-600 hover:bg-green-700 text-white shadow-green-200 animate-pulse"
-                : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200"
-                }`}
+              className={`mt-4 px-8 py-4 font-bold rounded-xl shadow-lg flex items-center gap-2 transition-transform hover:scale-105 ${
+                nextClass
+                  ? "bg-green-600 hover:bg-green-700 text-white shadow-green-200 animate-pulse"
+                  : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200"
+              }`}
             >
               <Play className="w-5 h-5 fill-current" />{" "}
               {nextClass ? "JOIN CLASS NOW" : "TEST CLASSROOM NOW"}
@@ -422,10 +410,11 @@ export default function StudentDashboard() {
                 notifications.map((notif) => (
                   <div
                     key={notif.id}
-                    className={`p-4 rounded-xl border shadow-sm transition-all hover:shadow-md ${notif.type === "urgent"
-                      ? "bg-green-50 border-green-200"
-                      : "bg-white border-slate-200"
-                      }`}
+                    className={`p-4 rounded-xl border shadow-sm transition-all hover:shadow-md ${
+                      notif.type === "urgent"
+                        ? "bg-green-50 border-green-200"
+                        : "bg-white border-slate-200"
+                    }`}
                   >
                     <div className="flex justify-between items-start mb-1">
                       <p className={`text-sm font-bold ${notif.type === "urgent" ? "text-green-800" : "text-slate-800"}`}>
