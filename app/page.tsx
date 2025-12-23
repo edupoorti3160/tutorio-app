@@ -7,21 +7,25 @@ export default function Home() {
     <main className="min-h-screen bg-white text-slate-900 font-sans selection:bg-indigo-100 selection:text-indigo-700 scroll-smooth">
       
       {/* --- NAVBAR --- */}
-      <nav className="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-lg border-b border-slate-200 shadow-sm transition-all">
+      <nav className="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-lg border-b border-slate-200 shadow-sm transition-all overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
             
-            {/* LOGO FORZADO A TAMAÑO MÁXIMO CON ZOOM CSS */}
-            <Link href="/" className="flex items-center h-full py-2">
+            {/* LOGO VERSIÓN NUCLEAR (ZOOM 300%) */}
+            <Link href="/" className="flex items-center h-full">
+              {/* Contenedor ancho y con márgenes ajustados para compensar el zoom */}
+              <div className="relative w-[300px] h-[80px] -ml-8"> 
                  <Image 
                     src="/logo.png" 
                     alt="Tutorio Logo" 
-                    width={280} 
-                    height={80}
-                    className="h-16 w-auto object-contain scale-110 md:scale-125 origin-left" 
-                    // ^ TRUCO: scale-125 hace un zoom del 25% extra y origin-left lo mantiene alineado a la izquierda
+                    fill
+                    className="object-contain object-left scale-[3.0] origin-left" 
+                    /* scale-[3.0] -> Hace la imagen 3 veces más grande de su tamaño real
+                       origin-left -> Hace que crezca hacia la derecha, no hacia los lados
+                    */
                     priority 
                  />
+              </div>
             </Link>
             
             <div className="hidden md:flex items-center gap-8 font-medium text-slate-600 text-sm">
