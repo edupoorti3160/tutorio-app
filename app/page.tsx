@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image'; // Importamos Image para el logo
 import { Video, Mic, Globe, CheckCircle, ArrowRight, Play, Star, Calendar, Shield, CreditCard, Clock, Laptop, ChevronDown, Check } from 'lucide-react';
 
 export default function Home() {
@@ -9,13 +10,17 @@ export default function Home() {
       <nav className="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-lg border-b border-slate-200 shadow-sm transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
-            <Link href="/" className="flex items-center gap-2 group">
-              <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-2 rounded-xl shadow-lg shadow-indigo-200 group-hover:scale-105 transition-transform">
-                <Globe className="w-6 h-6 text-white" />
+            {/* LOGO NUEVO INTEGRADO */}
+            <Link href="/" className="flex items-center group">
+              <div className="relative w-40 h-12"> {/* Contenedor para controlar tamaño */}
+                 <Image 
+                    src="/logo.png" 
+                    alt="Tutorio Logo" 
+                    fill
+                    className="object-contain object-left"
+                    priority 
+                 />
               </div>
-              <span className="text-2xl font-extrabold tracking-tight text-slate-900">
-                Tutorio
-              </span>
             </Link>
             
             <div className="hidden md:flex items-center gap-8 font-medium text-slate-600 text-sm">
@@ -268,29 +273,29 @@ export default function Home() {
               <div className="space-y-4 mb-8">
                 <div className="flex gap-4">
                   <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center gap-3 w-full">
-                     <span className="text-2xl">💰</span> 
-                     <div>
+                      <span className="text-2xl">💰</span> 
+                      <div>
                         <strong>Define tu Tarifa:</strong> 
                         <span className="block text-sm text-slate-500">Tú decides cuánto vale tu hora.</span>
-                     </div>
+                      </div>
                   </div>
                 </div>
                 <div className="flex gap-4">
                   <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center gap-3 w-full">
-                     <span className="text-2xl">📅</span> 
-                     <div>
+                      <span className="text-2xl">📅</span> 
+                      <div>
                         <strong>Horario Flexible:</strong> 
                         <span className="block text-sm text-slate-500">Trabaja solo cuando quieras.</span>
-                     </div>
+                      </div>
                   </div>
                 </div>
                 <div className="flex gap-4">
                   <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center gap-3 w-full">
-                     <span className="text-2xl">🔒</span> 
-                     <div>
+                      <span className="text-2xl">🔒</span> 
+                      <div>
                         <strong>Pagos Seguros:</strong> 
                         <span className="block text-sm text-slate-500">Sin perseguir alumnos para cobrar.</span>
-                     </div>
+                      </div>
                   </div>
                 </div>
               </div>
