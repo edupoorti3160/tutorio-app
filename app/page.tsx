@@ -14,13 +14,13 @@ export default function Home() {
             {/* LOGO VERSIÓN NUCLEAR (ZOOM 300%) */}
             <Link href="/" className="flex items-center h-full">
               {/* Contenedor ancho y con márgenes ajustados para compensar el zoom */}
-              <div className="relative w-[300px] h-[80px] -ml-8"> 
+              <div className="relative w-[270px] h-[80px] -ml-8"> 
                  <Image 
                     src="/logo.png" 
                     alt="Tutorio Logo" 
                     fill
-                    className="object-contain object-left scale-[3.0] origin-left" 
-                    /* scale-[3.0] -> Hace la imagen 3 veces más grande de su tamaño real
+                    className="object-contain object-left scale-[2.5] origin-left" 
+                    /* scale-[2.5] -> Hace la imagen 3 veces más grande de su tamaño real
                        origin-left -> Hace que crezca hacia la derecha, no hacia los lados
                     */
                     priority 
