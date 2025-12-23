@@ -10,19 +10,18 @@ export default function Home() {
       <nav className="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-lg border-b border-slate-200 shadow-sm transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
-            {/* LOGO GIGANTE - VERSIÓN FINAL */}
-            <Link href="/" className="flex items-center">
-              {/* Forzamos un contenedor de 300px de ancho x 70px de alto */}
-              <div className="relative w-[300px] h-[70px]"> 
+            
+            {/* LOGO FORZADO A TAMAÑO MÁXIMO CON ZOOM CSS */}
+            <Link href="/" className="flex items-center h-full py-2">
                  <Image 
                     src="/logo.png" 
                     alt="Tutorio Logo" 
-                    fill
-                    className="object-contain object-left" // Se alinea a la izquierda y crece hasta tocar los bordes
+                    width={280} 
+                    height={80}
+                    className="h-16 w-auto object-contain scale-110 md:scale-125 origin-left" 
+                    // ^ TRUCO: scale-125 hace un zoom del 25% extra y origin-left lo mantiene alineado a la izquierda
                     priority 
-                    sizes="(max-width: 768px) 100vw, 300px"
                  />
-              </div>
             </Link>
             
             <div className="hidden md:flex items-center gap-8 font-medium text-slate-600 text-sm">
@@ -403,4 +402,5 @@ export default function Home() {
 
 // Iconos Auxiliares
 function BriefcaseIcon() { return <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg> }
-function PlaneIcon() { return <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-
+function PlaneIcon() { return <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg> }
+function GraduationIcon() { return <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 14l9-5-9-5-9 5 9 5z" /><path d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222" /></svg> }
