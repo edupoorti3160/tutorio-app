@@ -14,7 +14,7 @@ export default function Home() {
             
             {/* LOGO */}
             <Link href="/" className="flex items-center h-full mr-12">
-              <div className="relative w-[220px] h-[64px]"> 
+              <div className="relative w-[160px] h-[64px]"> 
                  <Image 
                     src="/logo.png" 
                     alt="Tutorio Logo" 
