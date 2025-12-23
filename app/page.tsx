@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import Image from 'next/image'; // Importamos Image para el logo
+import Image from 'next/image';
 import { Video, Mic, Globe, CheckCircle, ArrowRight, Play, Star, Calendar, Shield, CreditCard, Clock, Laptop, ChevronDown, Check } from 'lucide-react';
 
 export default function Home() {
@@ -10,9 +10,9 @@ export default function Home() {
       <nav className="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-lg border-b border-slate-200 shadow-sm transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
-            {/* LOGO NUEVO INTEGRADO */}
-            <Link href="/" className="flex items-center group">
-              <div className="relative w-40 h-12"> {/* Contenedor para controlar tamaño */}
+            {/* LOGO MÁS GRANDE */}
+            <Link href="/" className="flex items-center group py-2">
+              <div className="relative w-64 h-16"> {/* AUMENTADO: de w-40 a w-64 y h-12 a h-16 */}
                  <Image 
                     src="/logo.png" 
                     alt="Tutorio Logo" 
